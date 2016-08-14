@@ -33,7 +33,8 @@
  #define _WIN32_WINNT   0x0501
  #include <ws2tcpip.h>
 #else
- #include <netinet/tcp.h>       /* TCP_CONGESTION */
+#include <netinet/in.h>
+#include <arpa/inet.h>       /* TCP_CONGESTION */
 #endif
 
 #include <event2/util.h>
@@ -43,11 +44,22 @@
 #include "transmission.h"
 #include "fdlimit.h" /* tr_fdSocketClose () */
 #include "net.h"
+#include "neti2p.h"
 #include "peer-io.h" /* tr_peerIoAddrStr () FIXME this should be moved to net.h */
 #include "session.h" /* tr_sessionGetPublicAddress () */
 #include "tr-utp.h" /* tr_utpSendTo () */
 #include "log.h"
 #include "utils.h" /* tr_time (), tr_logAddDebug () */
+#include "session.h"
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <strings.h>
 
 #ifndef IN_MULTICAST
 #define IN_MULTICAST(a) (((a) & 0xf0000000) == 0xe0000000)
@@ -56,10 +68,12 @@
 const tr_address tr_in6addr_any = { TR_AF_INET6, { IN6ADDR_ANY_INIT } };
 const tr_address tr_inaddr_any = { TR_AF_INET, { { { { INADDR_ANY, 0x00, 0x00, 0x00 } } } } };
 
+
 void
 tr_netInit (void)
 {
     static int initialized = false;
+
 
     if (!initialized)
     {
@@ -86,12 +100,20 @@ tr_net_strerror (char * buf, size_t buflen, int err)
 const char *
 tr_address_to_string_with_buf (const tr_address * addr, char * buf, size_t buflen)
 {
-    assert (tr_address_is_valid (addr));
-
+	assert (tr_address_is_valid (addr));
+	
     if (addr->type == TR_AF_INET)
-        return evutil_inet_ntop (AF_INET, &addr->addr, buf, buflen);
+        return evutil_inet_ntop (AF_INET, &addr->addr, buf, buflen); 
     else
-        return evutil_inet_ntop (AF_INET6, &addr->addr, buf, buflen);
+	if (addr->type == TR_AF_INET6)	
+    return evutil_inet_ntop (AF_INET6, &addr->addr, buf, buflen);
+	else if( addr->type == TR_AF_INETI2P ) {
+	memset(buf,0,buflen);
+	memcpy(buf,&addr->addr.addrI2P, buflen ); //516 error with detail.c
+	return buf;
+    }
+
+	return evutil_inet_ntop (AF_INET6, &addr->addr, buf, buflen);
 }
 
 /*
@@ -103,7 +125,9 @@ tr_address_to_string_with_buf (const tr_address * addr, char * buf, size_t bufle
 const char *
 tr_address_to_string (const tr_address * addr)
 {
-    static char buf[INET6_ADDRSTRLEN];
+    //static char buf[INET6_ADDRSTRLEN];
+	static char buf[517];
+	
     return tr_address_to_string_with_buf (addr, buf, sizeof (buf));
 }
 
@@ -112,18 +136,32 @@ tr_address_from_string (tr_address * dst, const char * src)
 {
     bool ok;
 
-    if ((ok = evutil_inet_pton (AF_INET, src, &dst->addr) == 1))
+
+	if ((ok = evutil_inet_pton (AF_INET, src, &dst->addr) == 1))
         dst->type = TR_AF_INET;
 
     if (!ok) /* try IPv6 */
         if ((ok = evutil_inet_pton (AF_INET6, src, &dst->addr) == 1))
             dst->type = TR_AF_INET6;
 
+	 
+    if (!ok) // Lets check if src is an i2p address
+        if ((ok = strstr( src , ".i2p" )) == 1)
+           {
+	    memset(dst,0,sizeof(tr_address));
+	    dst->type=TR_AF_INETI2P;
+	    memcpy(&dst->addr.addrI2P,src,516); //516 ?
+		
+		//ok = true;	   
+	    //return dst;
+		   }
+    
+
     return ok;
 }
 
 /*
- * Compare two tr_address structures.
+ * Compare tree tr_address structures.
  * Returns:
  * <0 if a < b
  * >0 if a > b
@@ -132,13 +170,13 @@ tr_address_from_string (tr_address * dst, const char * src)
 int
 tr_address_compare (const tr_address * a, const tr_address * b)
 {
-    static const int sizes[2] = { sizeof (struct in_addr), sizeof (struct in6_addr) };
+    static const int sizes[3] = { sizeof (struct in_addr), sizeof (struct in6_addr), sizeof(struct inI2P_addr) };
 
-    /* IPv6 addresses are always "greater than" IPv4 */
-    if (a->type != b->type)
+	if (a->type != b->type)
         return a->type == TR_AF_INET ? 1 : -1;
-
+	
     return memcmp (&a->addr, &b->addr, sizes[a->type]);
+
 }
 
 /***********************************************************************
@@ -172,7 +210,8 @@ tr_address_from_sockaddr_storage (tr_address                     * setme_addr,
                                   tr_port                        * setme_port,
                                   const struct sockaddr_storage  * from)
 {
-    if (from->ss_family == AF_INET)
+	
+	if (from->ss_family == AF_INET)
     {
         struct sockaddr_in * sin = (struct sockaddr_in *)from;
         setme_addr->type = TR_AF_INET;
@@ -189,7 +228,6 @@ tr_address_from_sockaddr_storage (tr_address                     * setme_addr,
         *setme_port = sin6->sin6_port;
         return true;
     }
-
     return false;
 }
 
@@ -198,7 +236,7 @@ setup_sockaddr (const tr_address        * addr,
                 tr_port                   port,
                 struct sockaddr_storage * sockaddr)
 {
-    assert (tr_address_is_valid (addr));
+	assert (tr_address_is_valid (addr));
 
     if (addr->type == TR_AF_INET)
     {
@@ -210,7 +248,7 @@ setup_sockaddr (const tr_address        * addr,
         memcpy (sockaddr, &sock4, sizeof (sock4));
         return sizeof (struct sockaddr_in);
     }
-    else
+    else if (addr->type == TR_AF_INET6)	
     {
         struct sockaddr_in6 sock6;
         memset (&sock6, 0, sizeof (sock6));
@@ -221,6 +259,16 @@ setup_sockaddr (const tr_address        * addr,
         memcpy (sockaddr, &sock6, sizeof (sock6));
         return sizeof (struct sockaddr_in6);
     }
+/*	else if (addr->type == TR_AF_INETI2P)	
+    {
+        struct sockaddr_in  socki2p;
+        memset (&socki2p, 0, sizeof (socki2p));
+        socki2p.sin_family      = AF_INET;
+        socki2p.sin_addr.s_addr =  addr->addr.addr4.s_addr;//inet_addr("127.0.0.1");
+        socki2p.sin_port        = port; //htons(51414);
+        memcpy (sockaddr, &socki2p, sizeof (socki2p));
+        return sizeof (struct sockaddr_in);
+    }*/
 }
 
 int
@@ -230,18 +278,27 @@ tr_netOpenPeerSocket (tr_session        * session,
                       bool                clientIsSeed)
 {
     static const int domains[NUM_TR_AF_INET_TYPES] = { AF_INET, AF_INET6 };
-    int                     s;
+    int                     s = -1;
     struct sockaddr_storage sock;
-    socklen_t               addrlen;
+    socklen_t               addrlen = sizeof(int); 
     const tr_address      * source_addr;
-    socklen_t               sourcelen;
+    socklen_t               sourcelen = sizeof(int);
     struct sockaddr_storage source_sock;
+	struct sockaddr_in serv_addr;
+	struct hostent *server;
+	struct in_addr ipv4addr;
 
+	
     assert (tr_address_is_valid (addr));
 
     if (!tr_address_is_valid_for_peers (addr, port))
         return -EINVAL;
 
+ 	
+    if(addr->type == TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) == true)
+    s = tr_fdSocketCreate (session, domains[TR_AF_INET], SOCK_STREAM);
+	else
+	if (tr_sessionGetI2PEnabled (session) != true)	
     s = tr_fdSocketCreate (session, domains[addr->type], SOCK_STREAM);
     if (s < 0)
         return -1;
@@ -253,11 +310,26 @@ tr_netOpenPeerSocket (tr_session        * session,
             tr_logAddInfo ("Unable to set SO_RCVBUF on socket %d: %s", s, tr_strerror (sockerrno));
     }
 
-    if (evutil_make_socket_nonblocking (s) < 0) {
+	    if (evutil_make_socket_nonblocking (s) < 0) {
         tr_netClose (session, s);
         return -1;
     }
 
+	if(addr->type == TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) == true){
+	inet_pton(AF_INET, session->I2PRouter, &ipv4addr);
+    server = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET); 
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;	
+    bcopy((char *)server->h_addr, 
+         (char *)&serv_addr.sin_addr.s_addr,
+         server->h_length);
+    serv_addr.sin_port = htons(session->public_peer_port-1);
+	memcpy(&sock,&serv_addr,sizeof(serv_addr));
+	addrlen = sizeof(serv_addr);
+	}
+	else
+	if(addr->type != TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) != true)	
+	{
     addrlen = setup_sockaddr (addr, port, &sock);
 
     /* set source address */
@@ -265,15 +337,15 @@ tr_netOpenPeerSocket (tr_session        * session,
     assert (source_addr);
     sourcelen = setup_sockaddr (source_addr, 0, &source_sock);
     if (bind (s, (struct sockaddr *) &source_sock, sourcelen))
-    {
+      {
         tr_logAddError (_("Couldn't set source address %s on %d: %s"),
                 tr_address_to_string (source_addr), s, tr_strerror (errno));
         tr_netClose (session, s);
         return -errno;
-    }
+	  }
+    }	
 
-    if ((connect (s, (struct sockaddr *) &sock,
-                  addrlen) < 0)
+    if (connect (s, (struct sockaddr *) &sock, addrlen) < 0
 #ifdef WIN32
       && (sockerrno != WSAEWOULDBLOCK)
 #endif
@@ -289,7 +361,35 @@ tr_netOpenPeerSocket (tr_session        * session,
         tr_netClose (session, s);
         s = -tmperrno;
     }
+    else if (tr_sessionGetI2PEnabled (session) == true && addr->type == TR_AF_INETI2P)
+		{
+			int bytes = 0;
+         	fd_set writefd;
+			struct timeval timeout;
+			char  adresse[518];
+			int sizeaddr;
+				
+	// let's wait for socket to become avaiable
+	    FD_ZERO(&writefd);
+	    FD_SET(s,&writefd);
 
+		timeout.tv_sec=2;
+	    timeout.tv_usec=5000;
+
+	    select(s+1, NULL, &writefd, NULL, &timeout);
+			
+ // We are connected to outbound tunnel, lets send i2p address to initialize bob tunnel
+		sprintf(adresse, "%s\n",tr_address_to_string(addr));
+		sizeaddr = strlen(adresse);
+	    if( ( bytes=send(s,adresse,sizeaddr,0) ) != sizeaddr) {
+		tr_logAddError (_( "Failed to establish peer connection, write endpoint key (%d bytes written) failed with reason: %s."),bytes,strerror(errno));
+		tr_netClose( session, s );
+		s = -sockerrno;	
+	    } else 
+		tr_logAddDebug(_( "Connected to: %s\n"),tr_address_to_string(addr));
+		}	
+	
+	
     tr_logAddDeep (__FILE__, __LINE__, NULL, "New OUTGOING connection %d (%s)",
                    s, tr_peerIoAddrStr (addr, port));
 
@@ -306,10 +406,38 @@ tr_netOpenPeerUTPSocket (tr_session        * session,
 
   if (tr_address_is_valid_for_peers (addr, port))
     {
+     
       struct sockaddr_storage ss;
-      const socklen_t sslen = setup_sockaddr (addr, port, &ss);
-      ret = UTP_Create (tr_utpSendTo, session, (struct sockaddr*)&ss, sslen);
-    }
+      struct sockaddr_in serv_addr;
+	  struct hostent *server;
+	  struct in_addr ipv4addr;
+	  socklen_t sslen;
+	  char  adresse[518];
+	  int sizeaddr;
+		
+	if(addr->type == TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) == true){
+	inet_pton(AF_INET, session->I2PRouter, &ipv4addr);
+    server = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET); 
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;	
+    bcopy((char *)server->h_addr, 
+         (char *)&serv_addr.sin_addr.s_addr,
+         server->h_length);  // cannot work, just implemented for test now
+    serv_addr.sin_port = htons(session->Sam3Session->port); //session->public_peer_port-1
+	sprintf(adresse, "%s\n", tr_address_to_string(addr));
+	sizeaddr = strlen(adresse);
+//	ret = UTP_Create (tr_utpSendTo,session, (struct sockaddr*)&addr, sizeof(addr));	
+	ret = UTP_Create (tr_utpSendTo,session, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+	tr_utpSendTo(session, (unsigned char*)adresse,sizeaddr,
+		        (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+		printf("message %s\n",adresse);
+	}
+	else if (tr_sessionGetI2PEnabled (session) != true)
+	{
+	sslen = setup_sockaddr ( addr, port, &ss);
+    ret = UTP_Create (tr_utpSendTo, session, (struct sockaddr*)&ss, sslen);	
+	}	
+ }
 
   return ret;
 }
@@ -325,7 +453,7 @@ tr_netBindTCPImpl (const tr_address * addr, tr_port port, bool suppressMsgs, int
 
     assert (tr_address_is_valid (addr));
 
-    fd = socket (domains[addr->type], SOCK_STREAM, 0);
+	fd = socket (domains[addr->type], SOCK_STREAM, 0);
     if (fd < 0) {
         *errOut = sockerrno;
         return -1;
@@ -374,7 +502,11 @@ tr_netBindTCPImpl (const tr_address * addr, tr_port port, bool suppressMsgs, int
         *errOut = err;
         return -1;
     }
-
+	    // Is i2p tunnel running and this bind port is the inbound tunnel port, lets store the socket
+   /* if( tr_netI2PIsTunnelRunning(session) == true && port == tr_netI2PGetInboundTunnelPort(session) ) {
+	    tr_netI2PSetInboundTunnelSocket(session,fd);
+    }*/
+ 
     if (!suppressMsgs)
         tr_logAddDebug ("Bound socket %d to port %d on %s", fd, port, tr_address_to_string (addr));
 
@@ -383,7 +515,6 @@ tr_netBindTCPImpl (const tr_address * addr, tr_port port, bool suppressMsgs, int
         tr_netCloseSocket (fd);
         return -1;
     }
-
     return fd;
 }
 
@@ -420,11 +551,13 @@ tr_netAccept (tr_session  * session,
               tr_address  * addr,
               tr_port     * port)
 {
-    int fd = tr_fdSocketAccept (session, b, addr, port);
+	int fd;
 
+	fd = tr_fdSocketAccept (session, b, addr, port);
     if (fd>=0 && evutil_make_socket_nonblocking (fd)<0) {
         tr_netClose (session, fd);
         fd = -1;
+		tr_logAddDebug("tr_netAccept %s  closed socket %d\n",tr_peerIoAddrStr (addr, (int)port), b);
     }
 
     return fd;
@@ -438,8 +571,17 @@ tr_netCloseSocket (int fd)
 
 void
 tr_netClose (tr_session * session, int s)
-{
+{	
     tr_fdSocketClose (session, s);
+
+/*	if(tr_netI2PIsTunnelRunning(session) == true && s == tr_netI2PGetInboundTunnelSocket(session) ) {
+	// Something shutted down the port for inbound
+	/// @todo For now we shut down the tunnel ?! is this ok?
+	    
+	//tr_dbg(  "BOB: Transmission is closing the incoming socket let's tear down the tunnels.");
+	tr_netI2PStopTunnel(session);
+    }*/
+
 }
 
 /*
@@ -501,7 +643,7 @@ global_unicast_address (struct sockaddr *sa)
           (unsigned char*)& ((struct sockaddr_in6*)sa)->sin6_addr;
         /* 2000::/3 */
         return (a[0] & 0xE0) == 0x20;
-    } else {
+    } else{
         errno = EAFNOSUPPORT;
         return -1;
     }
@@ -518,6 +660,7 @@ tr_globalAddress (int af, void *addr, int *addr_len)
     socklen_t salen;
     int rc;
 
+	
     switch (af) {
     case AF_INET:
         memset (&sin, 0, sizeof (sin));
@@ -561,7 +704,7 @@ tr_globalAddress (int af, void *addr, int *addr_len)
             return -1;
         memcpy (addr, & ((struct sockaddr_in6*)&ss)->sin6_addr, 16);
         *addr_len = 16;
-        return 1;
+        return 1;		
     default:
         return -1;
     }
@@ -649,9 +792,16 @@ isMartianAddr (const struct tr_address * a)
 bool
 tr_address_is_valid_for_peers (const tr_address * addr, tr_port port)
 {
-    return (port != 0)
+
+    if (addr->type == TR_AF_INETI2P)
+	return true;
+
+	return (port != 0)
         && (tr_address_is_valid (addr))
         && (!isIPv6LinkLocalAddress (addr))
         && (!isIPv4MappedAddress (addr))
         && (!isMartianAddr (addr));
+	
 }
+
+

@@ -23,6 +23,8 @@ enum
 {
     /* defined by BEP #9 */
     METADATA_PIECE_SIZE = (1024 * 16)
+	/* defined by I2P */
+  //  METADATA_PIECE_SIZE = (1024 * 4)
 };
 
 void* tr_torrentGetMetadataPiece (tr_torrent * tor, int piece, int * len);

@@ -97,6 +97,7 @@ const char * tr_strip_positional_args (const char * fmt);
  #define _(a) tr_strip_positional_args (a)
 #endif
 
+
 /****
 *****
 ****/
@@ -487,6 +488,24 @@ static inline char* tr_formatter_mem_MB (char * buf, double MBps, size_t buflen)
 char* tr_formatter_size_B (char * buf, int64_t bytes, size_t buflen);
 
 void tr_formatter_get_units (void * dict);
+
+/* test if tracker url is on i2p */
+bool tracker_is_on_i2p (const char * url);
+
+/* string replace*/
+char *replace_str(const char *str, const char *old, const char *newstr);
+
+char *base64(const unsigned char *input, int length);
+
+char *unbase64(char *input, int length);
+
+char *i2p_b64_to_b32(char *input);
+
+char *str_join (char *cs, ...);
+
+char *transform_host(char * url);
+
+const char * stateToString(int state);
 
 /***
 ****

@@ -117,7 +117,8 @@ tr_pex *     tr_peerMgrCompactToPex         (const void          * compact,
                                              size_t                compactLen,
                                              const uint8_t       * added_f,
                                              size_t                added_f_len,
-                                             size_t              * setme_pex_count);
+                                             size_t              * setme_pex_count,
+                                             bool                  i2penabled);
 
 tr_pex *     tr_peerMgrCompact6ToPex        (const void          * compact,
                                              size_t                compactLen,

@@ -59,6 +59,7 @@ class Session: public QObject
     const QString& sessionVersion () const { return mySessionVersion; }
 
   public:
+	int getI2PTunnelState( ) { if(mySession) return tr_sessionGetI2PTunnelState(mySession); }		
     int64_t blocklistSize () const { return myBlocklistSize; }
     void setBlocklistSize (int64_t i);
     void updateBlocklist ();

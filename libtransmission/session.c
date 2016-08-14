@@ -37,6 +37,7 @@
 #include "list.h"
 #include "log.h"
 #include "net.h"
+#include "neti2p.h"
 #include "peer-io.h"
 #include "peer-mgr.h"
 #include "platform.h" /* tr_lock, tr_getTorrentDir () */
@@ -132,7 +133,9 @@ tr_sessionSetEncryption (tr_session          * session,
   assert (mode == TR_ENCRYPTION_PREFERRED
        || mode == TR_ENCRYPTION_REQUIRED
        || mode == TR_CLEAR_PREFERRED);
-
+if (tr_sessionGetI2PEnabled (session) == true)
+  session->encryptionMode = TR_CLEAR_PREFERRED;
+  else
   session->encryptionMode = mode;
 }
 
@@ -186,14 +189,17 @@ accept_incoming_peer (int fd, short what UNUSED, void * vsession)
   tr_address clientAddr;
   tr_session * session = vsession;
 
-  clientSocket = tr_netAccept (session, fd, &clientAddr, &clientPort);
-  if (clientSocket > 0)
+	
+	  clientSocket = tr_netAccept (session, fd, &clientAddr, &clientPort);
+  if (clientSocket > 0 )			
     {
+
       tr_logAddDeep (__FILE__, __LINE__, NULL, "new incoming connection %d (%s)",
                        clientSocket, tr_peerIoAddrStr (&clientAddr, clientPort));
-      tr_peerMgrAddIncoming (session->peerMgr, &clientAddr, clientPort,
+		tr_peerMgrAddIncoming (session->peerMgr, &clientAddr, clientPort,
                              clientSocket, NULL);
-    }
+    }	
+
 }
 
 static void
@@ -201,18 +207,20 @@ open_incoming_peer_port (tr_session * session)
 {
   struct tr_bindinfo * b;
 
-  /* bind an ipv4 port to listen for incoming peers... */
+	if (tr_sessionGetI2PEnabled (session) != true)
+	{
+		  /* bind an ipv4 port to listen for incoming peers... */
   b = session->public_ipv4;
   b->socket = tr_netBindTCP (&b->addr, session->private_peer_port, false);
   if (b->socket >= 0)
-    {
+     {
       b->ev = event_new (session->event_base, b->socket, EV_READ | EV_PERSIST, accept_incoming_peer, session);
       event_add (b->ev, NULL);
-    }
-
+     }
+	  
   /* and do the exact same thing for ipv6, if it's supported... */
   if (tr_net_hasIPv6 (session->private_peer_port))
-    {
+     {
       b = session->public_ipv6;
       b->socket = tr_netBindTCP (&b->addr, session->private_peer_port, false);
       if (b->socket >= 0)
@@ -220,7 +228,8 @@ open_incoming_peer_port (tr_session * session)
           b->ev = event_new (session->event_base, b->socket, EV_READ | EV_PERSIST, accept_incoming_peer, session);
           event_add (b->ev, NULL);
         }
-    }
+     }
+	}
 }
 
 const tr_address*
@@ -343,10 +352,15 @@ tr_sessionGetDefaultSettings (tr_variant * d)
   tr_variantDictAddBool (d, TR_KEY_pex_enabled,                     true);
   tr_variantDictAddBool (d, TR_KEY_port_forwarding_enabled,         true);
   tr_variantDictAddInt  (d, TR_KEY_preallocation,                   TR_PREALLOCATE_SPARSE);
+  tr_variantDictAddBool (d, TR_KEY_I2P_ENABLED,                     TR_DEFAULT_I2P_ENABLED);
+  tr_variantDictAddInt (d, TR_KEY_I2P_TUNNEL_MODE,                  atoi (TR_DEFAULT_I2P_TUNNEL_MODE));
+  tr_variantDictAddStr (d, TR_KEY_I2P_ROUTER,                       TR_DEFAULT_I2P_ROUTER);
+  tr_variantDictAddInt (d, TR_KEY_I2P_BOB_PORT,                     atoi (TR_DEFAULT_I2P_BOB_PORT));
+  tr_variantDictAddInt (d, TR_KEY_I2P_PROXY_PORT,                   atoi (TR_DEFAULT_I2P_PROXY_PORT));	
   tr_variantDictAddBool (d, TR_KEY_prefetch_enabled,                DEFAULT_PREFETCH_ENABLED);
   tr_variantDictAddInt  (d, TR_KEY_peer_id_ttl_hours,               6);
   tr_variantDictAddBool (d, TR_KEY_queue_stalled_enabled,           true);
-  tr_variantDictAddInt  (d, TR_KEY_queue_stalled_minutes,           30);
+  tr_variantDictAddInt  (d, TR_KEY_queue_stalled_minutes,           60);
   tr_variantDictAddReal (d, TR_KEY_ratio_limit,                     2.0);
   tr_variantDictAddBool (d, TR_KEY_ratio_limit_enabled,             false);
   tr_variantDictAddBool (d, TR_KEY_rename_partial_files,            true);
@@ -415,6 +429,11 @@ tr_sessionGetSettings (tr_session * s, tr_variant * d)
   tr_variantDictAddBool (d, TR_KEY_pex_enabled,                  s->isPexEnabled);
   tr_variantDictAddBool (d, TR_KEY_port_forwarding_enabled,      tr_sessionIsPortForwardingEnabled (s));
   tr_variantDictAddInt  (d, TR_KEY_preallocation,                s->preallocationMode);
+  tr_variantDictAddBool (d, TR_KEY_I2P_ENABLED,                  s->isI2PEnabled );
+  tr_variantDictAddInt (d, TR_KEY_I2P_TUNNEL_MODE,               s->I2PTunnelMode );
+  tr_variantDictAddStr (d, TR_KEY_I2P_ROUTER,                    s->I2PRouter);
+  tr_variantDictAddInt (d, TR_KEY_I2P_BOB_PORT,                  s->I2PBobPort);
+  tr_variantDictAddInt (d, TR_KEY_I2P_PROXY_PORT,                s->I2PProxyPort);	
   tr_variantDictAddInt  (d, TR_KEY_prefetch_enabled,             s->isPrefetchEnabled);
   tr_variantDictAddInt  (d, TR_KEY_peer_id_ttl_hours,            s->peer_id_ttl_hours);
   tr_variantDictAddBool (d, TR_KEY_queue_stalled_enabled,        tr_sessionGetQueueStalledEnabled (s));
@@ -589,7 +608,7 @@ tr_sessionInit (const char  * tag,
   struct init_data data;
 
   assert (tr_variantIsDict (clientSettings));
-
+	
   tr_timeUpdate (time (NULL));
 
   /* initialize the bare skeleton of the session object */
@@ -606,19 +625,24 @@ tr_sessionInit (const char  * tag,
   /* nice to start logging at the very beginning */
   if (tr_variantDictFindInt (clientSettings, TR_KEY_message_level, &i))
     tr_logSetLevel (i);
-
+	
   /* start the libtransmission thread */
   tr_netInit (); /* must go before tr_eventInit */
+
   tr_eventInit (session);
   assert (session->events != NULL);
+
 
   /* run the rest in the libtransmission thread */
   data.done = false;
   data.session = session;
   data.configDir = configDir;
   data.messageQueuingEnabled = messageQueuingEnabled;
-  data.clientSettings = clientSettings;
+  data.clientSettings = clientSettings;	
   tr_runInEventThread (session, tr_sessionInitImpl, &data);
+
+	//tr_netI2PInit(session); //line 782
+	
   while (!data.done)
     tr_wait_msec (50);
 
@@ -691,12 +715,14 @@ tr_sessionInitImpl (void * vdata)
   assert (tr_amInEventThread (session));
   assert (tr_variantIsDict (clientSettings));
 
+
   dbgmsg ("tr_sessionInit: the session's top-level bandwidth object is %p",
           &session->bandwidth);
 
   tr_variantInitDict (&settings, 0);
   tr_sessionGetDefaultSettings (&settings);
   tr_variantMergeDicts (&settings, clientSettings);
+
 
   assert (session->event_base != NULL);
   session->nowTimer = evtimer_new (session->event_base, onNowTimer, session);
@@ -728,9 +754,11 @@ tr_sessionInitImpl (void * vdata)
 
   assert (tr_isSession (session));
 
+
   session->saveTimer = evtimer_new (session->event_base, onSaveTimer, session);
   tr_timerAdd (session->saveTimer, SAVE_INTERVAL_SECS, 0);
 
+	
   tr_announcerInit (session);
 
   /* first %s is the application name
@@ -739,15 +767,22 @@ tr_sessionInitImpl (void * vdata)
 
   tr_statsInit (session);
 
+				   // Setup i2p tunnel if enabled
+	tr_netI2PInit(session); //line 655
+
   tr_sessionSet (session, &settings);
 
+
   tr_udpInit (session);
+
 
   if (session->isLPDEnabled)
     tr_lpdInit (session, &session->public_ipv4->addr);
 
+
   /* cleanup */
   tr_variantFree (&settings);
+
   data->done = true;
 }
 
@@ -780,6 +815,19 @@ sessionSetImpl (void * vdata)
       umask (session->umask);
     }
 
+			    /*I2P*/	
+    if (tr_variantDictFindStr (settings, TR_KEY_I2P_ROUTER, &str, NULL ))
+    session->I2PRouter = tr_strdup (str);
+    if (tr_variantDictFindInt (settings, TR_KEY_I2P_BOB_PORT, &i ))
+    tr_sessionSetI2PBobPort (session, i);
+    if (tr_variantDictFindInt (settings, TR_KEY_I2P_TUNNEL_MODE, &i ))
+    tr_sessionSetI2PTunnelMode (session, i);
+    if (tr_variantDictFindInt (settings, TR_KEY_I2P_PROXY_PORT, &i ))
+    tr_sessionSetI2PProxyPort (session,i);
+	// All I2P Settings catched before.. following init
+    if (tr_variantDictFindBool (settings, TR_KEY_I2P_ENABLED, &boolVal ))
+    tr_sessionSetI2PEnabled (session, boolVal);
+	
   /* misc features */
   if (tr_variantDictFindInt (settings, TR_KEY_cache_size_mb, &i))
     tr_sessionSetCacheLimit_MB (session, i);
@@ -811,7 +859,7 @@ sessionSetImpl (void * vdata)
     tr_sessionSetDeleteSource (session, boolVal);
   if (tr_variantDictFindInt (settings, TR_KEY_peer_id_ttl_hours, &i))
     session->peer_id_ttl_hours = i;
-
+	
   /* torrent queues */
   if (tr_variantDictFindInt (settings, TR_KEY_queue_stalled_minutes, &i))
     tr_sessionSetQueueStalledMinutes (session, i);
@@ -1147,6 +1195,95 @@ tr_sessionSetPeerPortRandomOnStart (tr_session * session,
 
   session->isPortRandom = random;
 }
+
+void
+tr_sessionSetI2PEnabled( tr_session * session,
+                                    bool enabled )
+{
+    assert( tr_isSession( session ) );
+	
+    session->isI2PEnabled = enabled;
+	
+    tr_netI2PEnable(session,enabled);
+}
+
+bool tr_sessionGetI2PEnabled( tr_session * session )
+{
+	  assert (tr_isSession (session));
+
+      return session->isI2PEnabled;
+}
+
+int 
+tr_sessionGetI2PTunnelState( tr_session * session) 
+{
+    assert( tr_isSession( session ) );
+    return tr_netI2PTunnelState(session);
+}
+
+void
+tr_sessionSetI2PRouter( tr_session * session,
+                                      const char * addr )
+{
+    assert( tr_isSession( session ) );
+    session->I2PRouter = (char *)addr;
+}
+
+const char * tr_sessionGetI2PRouter( tr_session * session)
+{
+	assert( tr_isSession( session ) );
+	return session->I2PRouter;
+}
+
+void
+tr_sessionSetI2PBobPort( tr_session * session,
+                                    tr_port port)
+{
+    assert( tr_isSession( session ) );
+    session->I2PBobPort = port;
+}
+
+int
+tr_sessionGetI2PBobPort( tr_session * session)
+{
+	assert( tr_isSession( session ) );
+    return session->I2PBobPort;
+}
+
+void
+tr_sessionSetI2PProxyPort( tr_session * session,
+                                    tr_port port)
+{
+    assert( tr_isSession( session ) );
+    
+    session->I2PProxyPort = port;
+}
+
+int
+tr_sessionGetI2PProxyPort( tr_session * session)
+{
+	    assert( tr_isSession( session ) );
+    
+    return session->I2PProxyPort;
+}
+
+
+void
+tr_sessionSetI2PTunnelMode( tr_session * session,
+                                    int mode)
+{
+    assert( tr_isSession( session ) );
+    
+    session->I2PTunnelMode = mode;
+}
+
+int tr_sessionGetI2PTunnelMode( tr_session * session)
+{
+	    assert( tr_isSession( session ) );
+    
+    return session->I2PTunnelMode;
+}
+
 
 bool
 tr_sessionGetPeerPortRandomOnStart (tr_session * session)
@@ -1847,6 +1984,9 @@ sessionCloseImpl (void * vsession)
 
   closeBlocklists (session);
 
+  // So let's stop the tunnel
+  tr_netI2PStopTunnel(session);	
+
   tr_fdClose (session);
 
   session->isClosed = true;
@@ -2130,7 +2270,7 @@ toggleLPDImpl (void * data)
 
   session->isLPDEnabled = !session->isLPDEnabled;
 
-  if (session->isLPDEnabled)
+  if (session->isLPDEnabled && tr_sessionGetI2PEnabled (session) != true)
     tr_lpdInit (session, &session->public_ipv4->addr);
 }
 

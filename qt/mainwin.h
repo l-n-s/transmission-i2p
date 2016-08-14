@@ -92,6 +92,7 @@ class TrMainWindow: public QMainWindow
   private:
     QSet<int> getSelectedTorrents () const;
     void updateNetworkIcon ();
+	void updateI2PNetworkIcon( );
     QWidgetList myHidden;
 
   private slots:
@@ -156,6 +157,7 @@ class TrMainWindow: public QMainWindow
     QLabel * myDownloadSpeedLabel;
     QLabel * myUploadSpeedLabel;
     QLabel * myNetworkLabel;
+	QLabel * myI2PNetworkLabel;	
 
   public slots:
     void startAll ();

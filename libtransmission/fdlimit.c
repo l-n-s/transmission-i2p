@@ -710,14 +710,13 @@ tr_fdSocketAccept (tr_session * s, int sockfd, tr_address * addr, tr_port * port
 
   ensureSessionFdInfoExists (s);
   gFd = s->fdInfo;
-
+	
   len = sizeof (struct sockaddr_storage);
   fd = accept (sockfd, (struct sockaddr *) &sock, &len);
-
   if (fd >= 0)
     {
-      if ((gFd->peerCount < s->peerLimit)
-          && tr_address_from_sockaddr_storage (addr, port, &sock))
+      if (((gFd->peerCount < s->peerLimit)
+          && tr_address_from_sockaddr_storage (addr, port, &sock)))
         {
           ++gFd->peerCount;
         }

@@ -64,7 +64,7 @@ enum
     MAX_CONCURRENT_TASKS = 48,
 
     /* the value of the 'numwant' argument passed in tracker requests. */
-    NUMWANT = 80,
+    NUMWANT = 16,  //16 FOR I2P, Normal is 80 
 
     UPKEEP_INTERVAL_SECS = 1,
 
@@ -234,7 +234,10 @@ getKey (const char * url)
 
     tr_urlParse (url, -1, &scheme, &host, &port, NULL);
     ret = tr_strdup_printf ("%s://%s:%d", (scheme?scheme:"invalid"), (host?host:"invalid"), port);
-
+if (tracker_is_on_i2p(url) == true)
+	ret = tr_strdup_printf ("%s://%s", (scheme?scheme:"invalid"), (host?host:"invalid"));
+	
+	
     tr_free (host);
     tr_free (scheme);
     return ret;
@@ -1037,6 +1040,7 @@ on_announce_done (const tr_announce_response  * response,
                       "tracker_id_str:%s "
                       "pex:%zu "
                       "pex6:%zu "
+                      "pexi2p:%zu "
                       "err:%s "
                       "warn:%s",
                     (int)response->did_connect,
@@ -1049,6 +1053,7 @@ on_announce_done (const tr_announce_response  * response,
                       response->tracker_id_str ? response->tracker_id_str : "none",
                       response->pex_count,
                       response->pex6_count,
+                      response->pexi2p_count,
                       response->errmsg ? response->errmsg : "none",
                       response->warning ? response->warning : "none");
 
@@ -1144,6 +1149,10 @@ on_announce_done (const tr_announce_response  * response,
                 publishPeersPex (tier, seeders, leechers,
                                  response->pex6, response->pex6_count);
 
+			 if (response->pexi2p_count > 0)
+                publishPeersPex (tier, seeders, leechers,
+                                 response->pexi2p, response->pexi2p_count);
+
             tier->isRunning = data->isRunningOnSuccess;
 
             /* if the tracker included scrape fields in its announce response,
@@ -1164,7 +1173,8 @@ on_announce_done (const tr_announce_response  * response,
 
             tier->lastAnnounceSucceeded = true;
             tier->lastAnnouncePeerCount = response->pex_count
-                                        + response->pex6_count;
+                                        + response->pex6_count
+				                        + response->pexi2p_count;
 
             if (isStopped)
             {

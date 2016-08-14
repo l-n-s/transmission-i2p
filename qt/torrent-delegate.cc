@@ -418,6 +418,9 @@ TorrentDelegate :: drawTorrent( QPainter * painter, const QStyleOptionViewItem& 
     else
         painter->setPen( option.palette.color( cg, cr ) );
     tor.getMimeTypeIcon().paint( painter, iconArea, Qt::AlignCenter, im, qs );
+	    // Add room for logo in torrent name
+    if( tor.announceUrl().contains(".i2p/") )
+	QIcon( "icons/i2p_logo.png" ).paint( painter, nameArea, Qt::AlignRight| Qt::AlignCenter ,im ,qs );
     painter->setFont( nameFont );
     painter->drawText( nameArea, 0, nameFM.elidedText( nameStr, Qt::ElideRight, nameArea.width( ) ) );
     painter->setFont( statusFont );

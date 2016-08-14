@@ -29,6 +29,10 @@
 #ifndef _TR_NET_H_
 #define _TR_NET_H_
 
+#include <libbob/bob.h>
+#include <libsam3/libsam3.h>
+#include <assert.h>
+
 #ifdef WIN32
  #include <inttypes.h>
  #include <ws2tcpip.h>
@@ -59,10 +63,15 @@
 *****
 ****/
 
+typedef struct inI2P_addr {
+	_bob_base64_key_t addr;
+} inI2P_addr;
+
 typedef enum tr_address_type
 {
     TR_AF_INET,
     TR_AF_INET6,
+	TR_AF_INETI2P,
     NUM_TR_AF_INET_TYPES
 }
 tr_address_type;
@@ -75,8 +84,10 @@ typedef struct tr_address
          * since we can't use C99 designated initializers */
         struct in6_addr addr6;
         struct in_addr  addr4;
+		struct inI2P_addr addrI2P;
     } addr;
 } tr_address;
+
 
 extern const tr_address tr_inaddr_any;
 extern const tr_address tr_in6addr_any;
@@ -103,7 +114,8 @@ bool tr_address_is_valid_for_peers (const tr_address  * addr,
 static inline bool
 tr_address_is_valid (const tr_address * a)
 {
-    return (a != NULL) && (a->type==TR_AF_INET || a->type==TR_AF_INET6);
+ 
+	return (a != NULL) && (a->type==TR_AF_INET || a->type==TR_AF_INET6 || a->type==TR_AF_INETI2P);
 }
 
 /***********************************************************************
@@ -111,6 +123,7 @@ tr_address_is_valid (const tr_address * a)
  **********************************************************************/
 
 struct tr_session;
+
 
 int  tr_netOpenPeerSocket (tr_session       * session,
                            const tr_address * addr,

@@ -15,6 +15,7 @@
 #include <limits.h> /* INT_MAX */
 #include <string.h> /* memcpy, memcmp, strstr */
 #include <stdlib.h> /* qsort */
+#include <stdio.h>
 
 #include <event2/event.h>
 
@@ -41,6 +42,9 @@
 #include "tr-utp.h"
 #include "utils.h"
 #include "webseed.h"
+#include "openssl/sha.h"
+#include "base32.h"
+#include <ctype.h> /* isdigit (), isalpha (), tolower () */
 
 enum
 {
@@ -365,7 +369,6 @@ static int
 handshakeCompareToAddr (const void * va, const void * vb)
 {
   const tr_handshake * a = va;
-
   return tr_address_compare (tr_handshakeGetAddr (a, NULL), vb);
 }
 
@@ -388,7 +391,6 @@ static int
 comparePeerAtomToAddress (const void * va, const void * vb)
 {
   const struct peer_atom * a = va;
-
   return tr_address_compare (&a->addr, vb);
 }
 
@@ -2093,8 +2095,8 @@ tr_peerMgrAddIncoming (tr_peerMgr       * manager,
     {
       tr_peerIo *    io;
       tr_handshake * handshake;
-
-      io = tr_peerIoNewIncoming (session, &session->bandwidth, addr, port, socket, utp_socket);
+	
+	  io = tr_peerIoNewIncoming (session, &session->bandwidth, addr, port, socket, utp_socket);
 
       handshake = tr_handshakeNew (io,
                                    session->encryptionMode,
@@ -2123,6 +2125,9 @@ tr_peerMgrAddPex (tr_torrent * tor, uint8_t from,
         if (tr_address_is_valid_for_peers (&pex->addr, pex->port))
           ensureAtomExists (s, &pex->addr, pex->port, pex->flags, seedProbability, from);
 
+	    else
+		    tr_logAddDebug("Peer address is not valid!");
+		
       managerUnlock (s->manager);
     }
 }
@@ -2144,23 +2149,59 @@ tr_peerMgrCompactToPex (const void    * compact,
                         size_t          compactLen,
                         const uint8_t * added_f,
                         size_t          added_f_len,
-                        size_t        * pexCount)
+                        size_t        * pexCount,
+                        bool           i2penabled)
 {
-  size_t i;
+  size_t i,z;
   size_t n = compactLen / 6;
   const uint8_t * walk = compact;
   tr_pex * pex = tr_new0 (tr_pex, n);
+  uint8_t new_host_b32[64];
+  char *tmp;
+  uint8_t tmpwalk[32];
 
-  for (i=0; i<n; ++i)
+if(compactLen / 32 >= 1 && i2penabled == true)
+	{
+		n = compactLen / 32;
+
+	for (i=0; i<n; ++i)	
     {
+		memset(tmpwalk, '\0', sizeof(tmpwalk) );
+        memcpy(tmpwalk, walk, 32);walk += 32;
+		
+		base32_encode((const uint8_t*)tmpwalk, SHA256_DIGEST_LENGTH, new_host_b32, sizeof(new_host_b32));
+         tmp = (char *)new_host_b32 ;
+		for(z = 0; tmp[z]; z++){
+          tmp[z] = tolower(tmp[z]);
+            }
+	    strcat(tmp,".b32.i2p");
+		memcpy( &pex[i].addr.addr, tmp, strlen(tmp) );
+		pex[i].addr.type = TR_AF_INETI2P;
+		
+		if (added_f && (n == added_f_len))
+        pex[i].flags = added_f[i];
+	} 
+	*pexCount = n;
+    return pex;
+	}
+else if(i2penabled == false) // prevent fake adresse with i2p
+	{
+  for (i=0; i<n; ++i)
+    {				
       pex[i].addr.type = TR_AF_INET;
       memcpy (&pex[i].addr.addr, walk, 4); walk += 4;
       memcpy (&pex[i].port, walk, 2); walk += 2;
+
       if (added_f && (n == added_f_len))
         pex[i].flags = added_f[i];
     }
+	
 
   *pexCount = n;
+  return pex;
+	}
+
+ *pexCount = n;
   return pex;
 }
 
@@ -2200,8 +2241,10 @@ tr_peerMgrArrayToPex (const void  * array,
   tr_pex * pex = tr_new0 (tr_pex, n);
 
   for (i=0 ; i<n ; ++i)
-    {
+    {	
       memcpy (&pex[i].addr, walk, sizeof (tr_address));
+		if (strstr( (char *)&pex[i].addr , "AAAA.i2p" ) != NULL  && strlen((char *)&pex[i].addr) > 516)
+		pex[i].addr.type = TR_AF_INETI2P;
       memcpy (&pex[i].port, walk + sizeof (tr_address), 2);
       pex[i].flags = 0x00;
       walk += sizeof (tr_address) + 2;
@@ -2314,7 +2357,7 @@ tr_peerMgrGetPeers (tr_torrent   * tor,
 
   assert (tr_isTorrent (tor));
   assert (setme_pex != NULL);
-  assert (af==TR_AF_INET || af==TR_AF_INET6);
+  assert (af==TR_AF_INET || af==TR_AF_INET6 || af==TR_AF_INETI2P);
   assert (list_mode==TR_PEERS_CONNECTED || list_mode==TR_PEERS_INTERESTING);
 
   managerLock (s->manager);
@@ -2715,13 +2758,26 @@ tr_peerMgrPeerStats (const tr_torrent * tor, int * setmeCount)
       const struct peer_atom * atom = peer->atom;
       tr_peer_stat *           stat = ret + i;
 
-      tr_address_to_string_with_buf (&atom->addr, stat->addr, sizeof (stat->addr));
-      tr_strlcpy (stat->client, tr_quark_get_string(peer->client,NULL), sizeof (stat->client));
+
+	  if(atom->addr.type == TR_AF_INETI2P)
+	  tr_address_to_string_with_buf (&atom->addr, stat->addr, 32);	
+	  else	   //max size buffer addr 48
+	  tr_address_to_string_with_buf (&atom->addr, stat->addr, sizeof (stat->addr));	
+	  tr_strlcpy (stat->client, tr_quark_get_string(peer->client,NULL), sizeof (stat->client));
+	  if(atom->addr.type == TR_AF_INETI2P)
+	  stat->port                = 6881;	
+	  else
       stat->port                = ntohs (peer->atom->port);
       stat->from                = atom->fromFirst;
       stat->progress            = peer->progress;
-      stat->isUTP               = tr_peerMsgsIsUtpConnection (msgs);
-      stat->isEncrypted         = tr_peerMsgsIsEncrypted (msgs);
+	  if(atom->addr.type == TR_AF_INETI2P)
+      stat->isUTP               = false;
+	  else
+	  stat->isUTP               = tr_peerMsgsIsUtpConnection (msgs);
+	  if(atom->addr.type == TR_AF_INETI2P)
+      stat->isEncrypted         = false;
+	  else
+	  stat->isEncrypted         = tr_peerMsgsIsEncrypted (msgs);
       stat->rateToPeer_KBps     = toSpeedKBps (tr_peerGetPieceSpeed_Bps (peer, now_msec, TR_CLIENT_TO_PEER));
       stat->rateToClient_KBps   = toSpeedKBps (tr_peerGetPieceSpeed_Bps (peer, now_msec, TR_PEER_TO_CLIENT));
       stat->peerIsChoked        = tr_peerMsgsIsPeerChoked (msgs);
@@ -2732,14 +2788,16 @@ tr_peerMgrPeerStats (const tr_torrent * tor, int * setmeCount)
       stat->isDownloadingFrom   = tr_peerMsgsIsActive (msgs, TR_PEER_TO_CLIENT);
       stat->isUploadingTo       = tr_peerMsgsIsActive (msgs, TR_CLIENT_TO_PEER);
       stat->isSeed              = tr_peerIsSeed (peer);
-
       stat->blocksToPeer        = tr_historyGet (&peer->blocksSentToPeer,    now, CANCEL_HISTORY_SEC);
       stat->blocksToClient      = tr_historyGet (&peer->blocksSentToClient,  now, CANCEL_HISTORY_SEC);
       stat->cancelsToPeer       = tr_historyGet (&peer->cancelsSentToPeer,   now, CANCEL_HISTORY_SEC);
       stat->cancelsToClient     = tr_historyGet (&peer->cancelsSentToClient, now, CANCEL_HISTORY_SEC);
 
+	  if(atom->addr.type != TR_AF_INETI2P)
+		{
       stat->pendingReqsToPeer   = peer->pendingReqsToPeer;
       stat->pendingReqsToClient = peer->pendingReqsToClient;
+		}
 
       pch = stat->flagStr;
       if (stat->isUTP) *pch++ = 'T';
@@ -2755,8 +2813,7 @@ tr_peerMgrPeerStats (const tr_torrent * tor, int * setmeCount)
       else if (stat->from == TR_PEER_FROM_PEX) *pch++ = 'X';
       if (stat->isIncoming) *pch++ = 'I';
       *pch = '\0';
-    }
-
+	} 
   *setmeCount = size;
   return ret;
 }
@@ -3674,7 +3731,6 @@ compareAtomPtrsByAddress (const void * va, const void *vb)
 
   assert (tr_isAtom (a));
   assert (tr_isAtom (b));
-
   return tr_address_compare (&a->addr, &b->addr);
 }
 
@@ -4013,9 +4069,13 @@ getPeerCandidates (tr_session * session, int * candidateCount, int max)
 static void
 initiateConnection (tr_peerMgr * mgr, tr_swarm * s, struct peer_atom * atom)
 {
+
   tr_peerIo * io;
   const time_t now = tr_time ();
   bool utp = tr_sessionIsUTPEnabled (mgr->session) && !atom->utp_failed;
+  tr_address dst;
+
+	assert(tr_address_from_string (&dst, &atom->addr));
 
   if (atom->fromFirst == TR_PEER_FROM_PEX)
     /* PEX has explicit signalling for uTP support.  If an atom
@@ -4025,14 +4085,14 @@ initiateConnection (tr_peerMgr * mgr, tr_swarm * s, struct peer_atom * atom)
 
   tordbg (s, "Starting an OUTGOING%s connection with %s",
           utp ? " µTP" : "", tr_atomAddrStr (atom));
-
+	
   io = tr_peerIoNewOutgoing (mgr->session,
                              &mgr->session->bandwidth,
                              &atom->addr,
                              atom->port,
                              s->tor->info.hash,
                              s->tor->completeness == TR_SEED,
-                             utp);
+                             utp);	
 
   if (io == NULL)
     {

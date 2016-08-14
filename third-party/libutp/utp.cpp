@@ -2536,6 +2536,7 @@ bool UTP_IsIncomingUTP(UTPGotIncomingConnection *incoming_proc,
 	const byte version = UTP_IsV1(p1);
 	const uint32 id = (version == 0) ? p->connid : uint32(p1->connid);
 
+
 	if (version == 0 && len < sizeof(PacketFormat)) {
 		LOG_UTPV("recv %s len:%u version:%u too small", addrfmt(addr, addrbuf), (uint)len, version);
 		return false;

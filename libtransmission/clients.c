@@ -335,7 +335,7 @@ tr_clientForId (char * buf, size_t buflen, const void * id_in)
     }
 
     /* Mainline */
-    if (isMainlineStyle (id))
+	if (isMainlineStyle (id))
     {
         if (*id=='M') mainline_style (buf, buflen, "BitTorrent", id);
         if (*id=='Q') mainline_style (buf, buflen, "Queen Bee", id);
@@ -359,7 +359,20 @@ tr_clientForId (char * buf, size_t buflen, const void * id_in)
     else if (!memcmp (id, "aria2-", 6))    no_version (buf, buflen, "aria2");
     else if (!memcmp (id, "-WT-", 4))      no_version (buf, buflen, "BitLet");
     else if (!memcmp (id, "-FG", 3))       two_major_two_minor (buf, buflen, "FlashGet", id+3);
+	else if (!memcmp (id, "FU", 2))        no_version (buf, buflen, "Robert");
+	else if (!memcmp (id, "UFO", 3))       no_version (buf, buflen, "Robert");
+	else if (!memcmp (id, "RS", 2))       no_version (buf, buflen, "I2PRufus");
+	else if (id[0] == 3 && id[1] == 3 && id[2] == 3) no_version (buf, buflen, "I2PSnark");
+	else if ((id[0] == 0 && id[1] == 0 && id[2] == 0 && id[9] == 3
+	         && id[10] == 3 && id[11] == 3) || (id[0] == 0 && id[1] == 0 && id[2] == 0 && id[9] == 11
+	         && id[10] == 11 && id[11] == 11) || (id[0] == 11 && id[1] == 11 && id[2] == 11 && id[9] == 82
+	         && id[10] == 107 && id[11] == 0)) no_version (buf, buflen, "I2PSnarkXL");
+	else if (id[0] == 45 && id[1] == 80 && id[2] == 66 && id[9] == 83
+	         && id[10] == 143 && id[11] == 57) no_version (buf, buflen, "PyBit");
+	else if (id[0] == 0 && id[1] == 0 && id[2] == 0 && id[9] == 0
+	         && id[10] == 0 && id[11] == 0) no_version (buf, buflen, "I2P-Bt");	
 
+	//000000FFFFF = I2PSnarkXL
     /* Everything else */
     else if (!memcmp (id, "S3", 2) && id[2] == '-' && id[4] == '-' && id[6] == '-')
     {
@@ -454,7 +467,19 @@ tr_clientForId (char * buf, size_t buflen, const void * id_in)
     if (!*buf)
     {
         char out[32], *walk=out;
-        const char *in, *in_end;
+        const char *in, *in_end;	
+	printf ("idO=%d\n", id[0]);
+	printf ("id1=%d\n", id[1]);
+	printf ("id2=%d\n", id[2]);
+	printf ("id3=%d\n", id[3]);
+	printf ("id4=%d\n", id[4]);
+	printf ("id5=%d\n", id[5]);
+	printf ("id6=%d\n", id[6]);
+	printf ("id7=%d\n", id[7]);
+	printf ("id8=%d\n", id[8]);
+	printf ("id9=%d\n", id[9]);
+	printf ("id10=%d\n", id[10]);
+	printf ("id11=%d\n", id[11]);		
         for (in= (const char*)id, in_end=in+8; in!=in_end; ++in) {
             if (isprint (*in))
                 *walk++ = *in;

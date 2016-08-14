@@ -144,7 +144,10 @@ TrackerDelegate :: getText( const TrackerInfo& inf ) const
     char * host = NULL;
     int port = 0;
     tr_urlParse( inf.st.announce.toUtf8().constData(), -1, NULL, &host, &port, NULL );
+	if (arg( port ) != NULL && arg( port ) != 0){
     str += QString( "%1:%2" ).arg( host ).arg( port );
+	} else str += QString( "%1" ).arg( host );
+		
     tr_free( host );
     if( !key.isEmpty( ) ) str += " - " + key;
     str += inf.st.isBackup ? "</i>" : "</b>";

@@ -26,6 +26,8 @@
 #include <libtransmission/web.h> /* tr_webGetResponseStr () */
 #include <libtransmission/variant.h>
 #include <libtransmission/version.h>
+#include <libtransmission/base32.h>
+#include <openssl/sha.h>
 
 #define MY_NAME "transmission-show"
 #define TIMEOUT_SECS 30

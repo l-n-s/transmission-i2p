@@ -26,12 +26,13 @@
 #include "crypto.h"
 #include "log.h"
 #include "net.h"
+#include "neti2p.h"
 #include "peer-common.h" /* MAX_BLOCK_SIZE */
 #include "peer-io.h"
 #include "trevent.h" /* tr_runInEventThread () */
 #include "tr-utp.h"
 #include "utils.h"
-
+#include "peer-mgr.h" /* pex */
 
 #ifdef WIN32
  #define EAGAIN       WSAEWOULDBLOCK
@@ -598,7 +599,7 @@ tr_peerIoNew (tr_session       * session,
               struct UTPSocket * utp_socket)
 {
     tr_peerIo * io;
-
+	
     assert (session != NULL);
     assert (session->events != NULL);
     assert (tr_isBool (isIncoming));
@@ -609,6 +610,8 @@ tr_peerIoNew (tr_session       * session,
     assert (socket >= 0);
 #endif
 
+/*	if (addr->type == TR_AF_INETI2P)
+    assert (socket >= 0);*/
     if (socket >= 0) {
         tr_netSetTOS (socket, session->peerSocketTOS);
         maybeSetCongestionAlgorithm (socket, session->peer_congestion_algorithm);
@@ -619,7 +622,7 @@ tr_peerIoNew (tr_session       * session,
     io->refCount = 1;
     tr_cryptoConstruct (&io->crypto, torrentHash, isIncoming);
     io->session = session;
-    io->addr = *addr;
+	io->addr = *addr;
     io->isSeed = isSeed;
     io->port = port;
     io->socket = socket;
@@ -632,6 +635,9 @@ tr_peerIoNew (tr_session       * session,
     tr_bandwidthSetPeer (&io->bandwidth, io);
     dbgmsg (io, "bandwidth is %p; its parent is %p", &io->bandwidth, parent);
     dbgmsg (io, "socket is %d, utp_socket is %p", socket, utp_socket);
+	dbgmsg (io, "isIncoming %d", io->isIncoming);
+	if(io->isIncoming == true)
+	printf ("isIncoming %d adresse %s\n",io->isIncoming, io->addr.addr.addrI2P.addr);
 
     if (io->socket >= 0) {
         io->event_read = event_new (session->event_base,
@@ -640,7 +646,7 @@ tr_peerIoNew (tr_session       * session,
                                      io->socket, EV_WRITE, event_write_cb, io);
     }
 #ifdef WITH_UTP
-    else {
+    else /*if (addr->type != TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) != true)*/{
         UTP_SetSockopt (utp_socket, SO_RCVBUF, UTP_READ_BUFFER_SIZE);
         dbgmsg (io, "%s", "calling UTP_SetCallbacks &utp_function_table");
         UTP_SetCallbacks (utp_socket,
@@ -649,7 +655,7 @@ tr_peerIoNew (tr_session       * session,
         if (!isIncoming) {
             dbgmsg (io, "%s", "calling UTP_Connect");
             UTP_Connect (utp_socket);
-        }
+		}
     }
 #endif
 
@@ -666,7 +672,6 @@ tr_peerIoNewIncoming (tr_session        * session,
 {
     assert (session);
     assert (tr_address_is_valid (addr));
-
     return tr_peerIoNew (session, parent, addr, port, NULL, true, false,
                          fd, utp_socket);
 }
@@ -678,26 +683,37 @@ tr_peerIoNewOutgoing (tr_session        * session,
                       tr_port             port,
                       const uint8_t     * torrentHash,
                       bool                isSeed,
-                      bool                utp)
+                      bool                utp
+                      )
 {
     int fd = -1;
     struct UTPSocket * utp_socket = NULL;
-
     assert (session);
     assert (tr_address_is_valid (addr));
     assert (torrentHash);
 
-    if (utp)
+	    // I2P
+	if( addr->type == TR_AF_INETI2P && tr_netI2PGetMyEndPointKey(session) != NULL) {
+	const char *myEndpointkey=tr_netI2PGetMyEndPointKey(session);
+        if( memcmp( &addr->addr, myEndpointkey, sizeof(inI2P_addr) ) == 0 ) {
+		dbgmsg(NULL,"Connection to peer: OURSELF!");
+		return NULL;
+	} else {
+		tr_logAddDebug(_("Connection to peer: OK, Not ourself!"));
+	}
+    }
+//    if (utp && addr->type != TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) != true)
+	 if (utp)
         utp_socket = tr_netOpenPeerUTPSocket (session, addr, port, isSeed);
 
     if (!utp_socket) {
         fd = tr_netOpenPeerSocket (session, addr, port, isSeed);
         dbgmsg (NULL, "tr_netOpenPeerSocket returned fd %d", fd);
-    }
-
+	}
+	
     if (fd < 0 && utp_socket == NULL)
         return NULL;
-
+	
     return tr_peerIoNew (session, parent, addr, port,
                          torrentHash, false, isSeed, fd, utp_socket);
 }
@@ -790,6 +806,9 @@ tr_peerIoSetEnabled (tr_peerIo    * io,
 static void
 io_close_socket (tr_peerIo * io)
 {
+    tr_session * session;
+    session = tr_peerIoGetSession (io);
+	
     if (io->socket >= 0) {
         tr_netClose (io->session, io->socket);
         io->socket = -1;
@@ -805,8 +824,9 @@ io_close_socket (tr_peerIo * io)
         io->event_write = NULL;
     }
 
+
 #ifdef WITH_UTP
-    if (io->utp_socket) {
+    if (io->utp_socket /*&& io->addr.type != TR_AF_INETI2P*/) {
         UTP_SetCallbacks (io->utp_socket,
                           &dummy_utp_function_table,
                           NULL);
@@ -891,7 +911,12 @@ tr_peerIoGetAddress (const tr_peerIo * io, tr_port   * port)
 const char*
 tr_peerIoAddrStr (const tr_address * addr, tr_port port)
 {
-    static char buf[512];
+    static char buf[1024];
+	
+	
+    if( addr->type == TR_AF_INETI2P )  
+	tr_snprintf( buf, sizeof( buf ), "%s", tr_address_to_string( addr ));
+	else if( addr->type == TR_AF_INET ) 
     tr_snprintf (buf, sizeof (buf), "[%s]:%u", tr_address_to_string (addr), ntohs (port));
     return buf;
 }
@@ -936,9 +961,11 @@ tr_peerIoReconnect (tr_peerIo * io)
     pendingEvents = io->pendingEvents;
     event_disable (io, EV_READ | EV_WRITE);
 
+
     io_close_socket (io);
 
-    io->socket = tr_netOpenPeerSocket (session, &io->addr, io->port, io->isSeed);
+
+	io->socket = tr_netOpenPeerSocket (session, &io->addr, io->port, io->isSeed);
     io->event_read = event_new (session->event_base, io->socket, EV_READ, event_read_cb, io);
     io->event_write = event_new (session->event_base, io->socket, EV_WRITE, event_write_cb, io);
 
@@ -992,7 +1019,13 @@ tr_peerIoSetPeersId (tr_peerIo * io, const uint8_t * peer_id)
     assert (tr_isPeerIo (io));
 
     if ((io->peerIdIsSet = peer_id != NULL))
-        memcpy (io->peerId, peer_id, 20);
+	{
+		if (tr_sessionGetI2PEnabled (io->session) == true && peer_id[0] == 0
+		&& peer_id[2] == 0  && peer_id[4] == 0  && peer_id[6] == 0 && peer_id[8] == 0)
+        memcpy (io->peerId, peer_id + 9, 20);
+	    else
+		memcpy (io->peerId, peer_id, 20);	
+	}	
     else
         memset (io->peerId, 0, 20);
 }
@@ -1008,6 +1041,7 @@ getDesiredOutputBufferSize (const tr_peerIo * io, uint64_t now)
      * being large enough to hold the next 20 seconds' worth of input,
      * or a few blocks, whichever is bigger.
      * It's okay to tweak this as needed */
+    const double maxBlockSize = 16 * 1024; /* 16 KiB is from BT spec */
     const unsigned int currentSpeed_Bps = tr_bandwidthGetPieceSpeed_Bps (&io->bandwidth, now, TR_UP);
     const unsigned int period = 15u; /* arbitrary */
     /* the 3 is arbitrary; the .5 is to leave room for messages */
@@ -1238,7 +1272,7 @@ tr_peerIoTryRead (tr_peerIo * io, size_t howmuch)
         else /* tcp peer connection */
         {
             int e;
-
+			
             EVUTIL_SET_SOCKET_ERROR (0);
             res = evbuffer_read (io->inbuf, io->socket, (int)howmuch);
             e = EVUTIL_SOCKET_ERROR ();

@@ -130,6 +130,13 @@ static const struct tr_key_struct my_static[] =
   { "haveValid", 9 },
   { "honorsSessionLimits", 19 },
   { "host", 4 },
+  { "i2p-bob-port", 12 },
+  { "i2p-enabled", 11 },
+  { "i2p-proxy-port", 14 },
+  { "i2p-router", 10 },
+  { "i2p-tunnel-mode", 15 },
+  { "i2p_dht", 7 },
+  { "i2p_pex", 7 },
   { "id", 2 },
   { "idle-limit", 10 },
   { "idle-mode", 9 },
@@ -288,6 +295,7 @@ static const struct tr_key_struct my_static[] =
   { "rpc-version-minimum", 19 },
   { "rpc-whitelist", 13 },
   { "rpc-whitelist-enabled", 21 },
+  { "rport", 5 },
   { "scrape", 6 },
   { "scrape-paused-torrents-enabled", 30 },
   { "scrapeState", 11 },
@@ -391,7 +399,7 @@ static const struct tr_key_struct my_static[] =
   { "watch-dir-enabled", 17 },
   { "webseeds", 8 },
   { "webseedsSendingToUs", 19 }
-};
+  };
 
 static int
 compareKeys (const void * va, const void * vb)

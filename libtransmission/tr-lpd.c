@@ -277,6 +277,7 @@ int tr_lpdInit (tr_session* ss, tr_address* tr_addr UNUSED)
     assert (lpd_announceInterval > 0);
     assert (lpd_announceScope > 0);
 
+	
     lpd_port = tr_sessionGetPeerPort (ss);
     if (lpd_port <= 0)
         return -1;

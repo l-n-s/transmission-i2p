@@ -70,6 +70,12 @@ extern "C" {
 
 #define SHA_DIGEST_LENGTH 20
 #define TR_INET6_ADDRSTRLEN 46
+#define TUNNEL_STATE_IS_UNKNOWN					0x00
+#define TUNNEL_STATE_IS_RUNNING					0x01
+#define TUNNEL_STATE_IS_NOT_RUNNING				0x02
+#define TUNNEL_STATE_ROUTER_UNREACHABLE		0x03
+#define TUNNEL_STATE_I2P_DISABLED				0x04
+#define TUNNEL_STATE_STARTED					0x10	
 
 typedef uint32_t tr_file_index_t;
 typedef uint32_t tr_piece_index_t;
@@ -155,6 +161,11 @@ const char* tr_getDefaultDownloadDir (void);
 #define TR_DEFAULT_PEER_SOCKET_TOS_STR      "default"
 #define TR_DEFAULT_PEER_LIMIT_GLOBAL_STR        "200"
 #define TR_DEFAULT_PEER_LIMIT_TORRENT_STR        "50"
+#define TR_DEFAULT_I2P_ENABLED                 "true"
+#define TR_DEFAULT_I2P_TUNNEL_MODE                "1"
+#define TR_DEFAULT_I2P_ROUTER             "127.0.0.1"
+#define TR_DEFAULT_I2P_BOB_PORT                "2827"
+#define TR_DEFAULT_I2P_PROXY_PORT              "4444"
 
 /**
  * Add libtransmission's default settings to the benc dictionary.
@@ -273,6 +284,58 @@ void tr_sessionClose (tr_session *);
  * during the session.
  */
 const char * tr_sessionGetConfigDir (const tr_session *);
+/**
+*	@brief Enables the I2P network.
+ */
+void
+tr_sessionSetI2PEnabled( tr_session * session,
+                                    bool enabled );
+
+bool tr_sessionGetI2PEnabled( tr_session * session );
+/**
+ *	@brief Sets the I2P router address.
+ */
+void
+tr_sessionSetI2PRouter( tr_session * session,
+                                    const char * addr );
+
+const char * tr_sessionGetI2PRouter( tr_session * session);
+/**
+ *	@brief Sets the I2P BOB control port
+ */
+void
+tr_sessionSetI2PBobPort( tr_session * session,
+                                    tr_port port);
+
+int tr_sessionGetI2PBobPort( tr_session * session);
+
+/**
+ *	@brief Enables the I2P proxy port.
+ */
+void
+tr_sessionSetI2PProxyPort( tr_session * session,
+                                    tr_port port);
+
+int tr_sessionGetI2PProxyPort( tr_session * session);
+
+/**
+ *	@brief Get the state of I2P tunnel
+ */
+int tr_sessionGetI2PTunnelState( tr_session * session);
+
+
+/**
+ *	@brief Enables the I2P Mode.
+ *	@note There are 3 modes 0,1,2 where:<br>
+ *		<b>0</b> High anonymity<br>
+ *		<b>1</b> Standard<br>
+ *		<b>2</b> Performance<br>
+ */
+void
+tr_sessionSetI2PTunnelMode( tr_session * session,
+                                    int mode);
+
+int tr_sessionGetI2PTunnelMode( tr_session * session);
 
 /**
  * @brief Set the per-session default download folder for new torrents.
@@ -2074,6 +2137,7 @@ static inline bool tr_isDirection (tr_direction d) { return d==TR_UP || d==TR_DO
 
 /** @brief Sanity checker to test that a bool is true or false */
 static inline bool tr_isBool (bool b) { return b==1 || b==0; }
+
 
 #ifdef __cplusplus
 }

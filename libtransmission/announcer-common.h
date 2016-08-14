@@ -211,6 +211,12 @@ typedef struct
   /* IPv6 peers that we acquired from the tracker */
   struct tr_pex * pex6;
 
+  /* number of items in the 'i2p_pex' field */
+  size_t pexi2p_count;
+
+  /* I2P peers that we acquired from the tracker */
+  struct tr_pex * pexi2p;
+
   /* human-readable error string on failure, or NULL */
   char * errmsg;
 

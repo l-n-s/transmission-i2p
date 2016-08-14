@@ -400,7 +400,9 @@ readYb (tr_handshake * handshake, struct evbuffer * inbuf)
   if (evbuffer_get_length (inbuf) < needlen)
     return READ_LATER;
 
+
   isEncrypted = memcmp (evbuffer_pullup (inbuf, HANDSHAKE_NAME_LEN), HANDSHAKE_NAME, HANDSHAKE_NAME_LEN);
+	
   if (isEncrypted)
     {
       needlen = KEY_LEN;
@@ -413,6 +415,7 @@ readYb (tr_handshake * handshake, struct evbuffer * inbuf)
 
   tr_peerIoSetEncryption (handshake->io, isEncrypted ? PEER_ENCRYPTION_RC4
                                                      : PEER_ENCRYPTION_NONE);
+	
   if (!isEncrypted)
     {
       setState (handshake, AWAITING_HANDSHAKE);
@@ -601,16 +604,18 @@ readHandshake (tr_handshake    * handshake,
 
   handshake->haveReadAnythingFromPeer = true;
 
-  pstrlen = evbuffer_pullup (inbuf, 1)[0]; /* peek, don't read. We may be
-                                              handing inbuf to AWAITING_YA */
-
+  pstrlen = evbuffer_pullup (inbuf, 1)[0]; /* peek, don't read. 
+	                                 We may be handing inbuf to AWAITING_YA */
+	printf("%s\n",(char*)inbuf);
+	// || strstr((char*)inbuf,"AAAA") != NULL || strstr((char*)inbuf,".i2p") != NULL
+	
   if (pstrlen == 19) /* unencrypted */
     {
       tr_peerIoSetEncryption (handshake->io, PEER_ENCRYPTION_NONE);
 
       if (handshake->encryptionMode == TR_ENCRYPTION_REQUIRED)
         {
-          dbgmsg (handshake, "peer is unencrypted, and we're disallowing that");
+          dbgmsg(handshake, "peer is unencrypted, and we're disallowing that");
           return tr_handshakeDone (handshake, false);
         }
     }

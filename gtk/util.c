@@ -147,6 +147,7 @@ gtr_get_host_from_url (char * buf, size_t buflen, const char * url)
   char host[1024];
   const char * pch;
 
+
   if ((pch = strstr (url, "://")))
     {
       const size_t hostlen = strcspn (pch+3, ":/");
@@ -159,17 +160,21 @@ gtr_get_host_from_url (char * buf, size_t buflen, const char * url)
       *host = '\0';
     }
 
-  if (tr_addressIsIP (host))
+  if (tr_addressIsIP (host)&& (tracker_is_on_i2p(url) == false))
     {
       g_strlcpy (buf, url, buflen);
     }
   else
-    {
-      const char * first_dot = strchr (host, '.');
+    {		
+	 const char * first_dot = strchr (host, '.');
       const char * last_dot = strrchr (host, '.');
-      if ((first_dot) && (last_dot) && (first_dot != last_dot))
+
+	  if ((first_dot) && (last_dot)  && (tracker_is_on_i2p(url) == true))
+        g_strlcpy (buf, host, buflen);
+	  else
+      if ((first_dot) && (last_dot) && (first_dot != last_dot) && (tracker_is_on_i2p(url) == false))
         g_strlcpy (buf, first_dot + 1, buflen);
-      else
+		else
         g_strlcpy (buf, host, buflen);
     }
 }

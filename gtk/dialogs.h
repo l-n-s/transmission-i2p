@@ -36,4 +36,5 @@ void gtr_confirm_remove (GtkWindow * parent,
                           GSList    * gtorrents,
                           gboolean    doDelete);
 
+
 #endif /* GTR_DIALOGS_H */

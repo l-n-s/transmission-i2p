@@ -41,7 +41,7 @@ struct delete_data
     TrCore   * core;
 };
 
-static void
+void
 on_remove_dialog_response (GtkDialog * dialog, gint response, gpointer gdd)
 {
     GSList * l;
@@ -165,3 +165,4 @@ gtr_confirm_remove (GtkWindow  * parent,
     g_string_free (primary_text, TRUE);
     g_string_free (secondary_text, TRUE);
 }
+

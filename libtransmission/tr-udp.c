@@ -237,16 +237,28 @@ tr_udpInit (tr_session *ss)
     bool is_default;
     const struct tr_address * public_addr;
     struct sockaddr_in sin;
+	struct in_addr ipv4_i2p_addr;
     int rc;
 
     assert (ss->udp_socket < 0);
     assert (ss->udp6_socket < 0);
 
-    ss->udp_port = tr_sessionGetPeerPort (ss);
+/*	if(tr_sessionGetI2PEnabled (ss) == true)  //I2P
+	{
+	ss->udp_port = ss->Sam3Session->port;	
+	ss->udp_socket = ss->Sam3Session->fd;	
+    } for my test --------
+	else */ 
+//	{
+	ss->udp_port = tr_sessionGetPeerPort (ss);	
     if (ss->udp_port <= 0)
         return;
 
-    ss->udp_socket = socket (PF_INET, SOCK_DGRAM, 0);
+/*	if(tr_sessionGetI2PEnabled (ss) == true)  //I2P
+ //   ss->udp_socket = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	ss->udp_socket = socket (PF_INET, SOCK_DGRAM, 0);	
+	else */
+	ss->udp_socket = socket (PF_INET, SOCK_DGRAM, 0);
     if (ss->udp_socket < 0) {
         tr_logAddNamedError ("UDP", "Couldn't create IPv4 socket");
         goto ipv6;
@@ -257,14 +269,23 @@ tr_udpInit (tr_session *ss)
     public_addr = tr_sessionGetPublicAddress (ss, TR_AF_INET, &is_default);
     if (public_addr && !is_default)
         memcpy (&sin.sin_addr, &public_addr->addr.addr4, sizeof (struct in_addr));
+	if (tr_sessionGetI2PEnabled (ss) == true)
+	    {
+		inet_pton(AF_INET, ss->I2PRouter, &ipv4_i2p_addr);
+		memcpy (&sin.sin_addr, &ipv4_i2p_addr, sizeof (struct in_addr));
+	    }
     sin.sin_port = htons (ss->udp_port);
+	if (tr_sessionGetI2PEnabled (ss) != true)  //don't bind I2P router, thanks!
+	   {
     rc = bind (ss->udp_socket, (struct sockaddr*)&sin, sizeof (sin));
     if (rc < 0) {
         tr_logAddNamedError ("UDP", "Couldn't bind IPv4 socket");
         close (ss->udp_socket);
         ss->udp_socket = -1;
         goto ipv6;
-    }
+	            }
+	   }
+//	}
     ss->udp_event =
         event_new (ss->event_base, ss->udp_socket, EV_READ | EV_PERSIST,
                   event_callback, ss);

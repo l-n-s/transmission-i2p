@@ -1075,7 +1075,7 @@ tr_variantMergeDicts (tr_variant * target, const tr_variant * source)
             }
           else
             {
-              tr_logAddDebug ("tr_variantMergeDicts skipping \"%s\"", tr_quark_get_string(key,NULL));
+				tr_logAddDebug ("tr_variantMergeDicts skipping \"%s\"", tr_quark_get_string(key,NULL));
             }
         }
     }

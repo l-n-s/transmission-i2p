@@ -1953,6 +1953,19 @@ sessionSet (tr_session               * session,
         tr_sessionSetEncryption (session, TR_ENCRYPTION_PREFERRED);
     }
 
+    /*I2P*/	
+    if (tr_variantDictFindStr (args_in, TR_KEY_I2P_ROUTER, &str, NULL ))
+    session->I2PRouter = tr_strdup (str);
+    if (tr_variantDictFindInt (args_in, TR_KEY_I2P_BOB_PORT, &i ))
+    tr_sessionSetI2PBobPort (session, i);
+    if (tr_variantDictFindInt (args_in, TR_KEY_I2P_TUNNEL_MODE, &i ))
+    tr_sessionSetI2PTunnelMode (session, i);
+    if (tr_variantDictFindInt (args_in, TR_KEY_I2P_PROXY_PORT, &i ))
+    tr_sessionSetI2PProxyPort (session,i);
+	// All I2P Settings catched before.. following init
+    if (tr_variantDictFindBool (args_in, TR_KEY_I2P_ENABLED, &boolVal ))
+    tr_sessionSetI2PEnabled (session, boolVal);
+
   notify (session, TR_RPC_SESSION_CHANGED, NULL);
 
   return NULL;
@@ -2072,6 +2085,11 @@ sessionGet (tr_session               * s,
       default: str = "preferred"; break;
     }
   tr_variantDictAddStr (d, TR_KEY_encryption, str);
+  tr_variantDictAddBool (d, TR_KEY_I2P_ENABLED,tr_sessionGetI2PEnabled (s));
+  tr_variantDictAddInt (d, TR_KEY_I2P_TUNNEL_MODE,tr_sessionGetI2PTunnelMode (s));
+  tr_variantDictAddStr (d, TR_KEY_I2P_ROUTER,tr_sessionGetI2PRouter (s));
+  tr_variantDictAddInt (d, TR_KEY_I2P_BOB_PORT,tr_sessionGetI2PBobPort(s));
+  tr_variantDictAddInt (d, TR_KEY_I2P_PROXY_PORT,tr_sessionGetI2PProxyPort (s));
 
   return NULL;
 }

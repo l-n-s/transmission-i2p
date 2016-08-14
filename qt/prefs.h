@@ -115,6 +115,11 @@ class Prefs: public QObject
       UTP_ENABLED,
       LPD_ENABLED,
       PORT_FORWARDING,
+	/*    I2P_ENABLED,
+	    I2P_ROUTER,
+	    I2P_BOB_PORT,
+	    I2P_PROXY_PORT,
+	    I2P_TUNNEL_MODE,*/
       PREALLOCATION,
       RATIO,
       RATIO_ENABLED,

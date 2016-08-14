@@ -392,6 +392,9 @@ TrMainWindow :: createStatusBar ()
     l = myNetworkLabel = new QLabel;
     h->addWidget (l);
 
+	l = myI2PNetworkLabel = new QLabel;
+    h->addWidget(l);
+
   h->addStretch (1);
 
     l = myDownloadSpeedLabel = new QLabel (this);
@@ -753,6 +756,8 @@ TrMainWindow :: refreshStatusBar ()
   myDownloadSpeedLabel->setVisible (downCount);
 
   myNetworkLabel->setVisible (!mySession.isServer ());
+
+  myI2PNetworkLabel->setVisible( myPrefs.getBool( Prefs::I2P_ENABLED) );	
 
   const QString mode (myPrefs.getString (Prefs::STATUSBAR_STATS));
   QString str;
@@ -1366,10 +1371,46 @@ TrMainWindow :: updateNetworkIcon ()
   myNetworkLabel->setToolTip (tip);
 }
 
+TrMainWindow :: updateI2PNetworkIcon( )
+{
+	QPixmap pixmap=QIcon("icons/i2p.png").pixmap(36,10);
+	QString tt;
+	switch(mySession.getI2PTunnelState()) {
+		case 0:		// Unknown
+			myI2PNetworkLabel->setEnabled(false);
+			tt=tr("Unknow tunnel state");
+		break;
+		case 1:		//  Tunnel is running
+			myI2PNetworkLabel->setEnabled(true);
+			tt=tr("Tunnel is up and running");
+		break;
+		case 2:		// Tunnel is not running
+			tt=tr("Tunnel is not running");
+		break;
+		case 3:		// I2P Router is unreachable
+			myI2PNetworkLabel->setEnabled(false);
+			tt=tr("I2P router is unreachable.");
+		break;
+		case 4:		// I2P is disabled
+			myI2PNetworkLabel->setEnabled(false);
+			tt=tr("I2P Is disabled.");
+		break;
+		
+		case 10:		// Tunnel is starting up
+			myI2PNetworkLabel->setEnabled(false);
+			tt=tr("Tunnel is starting up");
+		break;
+		
+	}
+	myI2PNetworkLabel->setPixmap( pixmap );
+	myI2PNetworkLabel->setToolTip( tt );
+}
+
 void
 TrMainWindow :: onNetworkTimer ()
 {
   updateNetworkIcon ();
+  updateI2PNetworkIcon( );	
 }
 
 void

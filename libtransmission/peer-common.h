@@ -35,7 +35,10 @@ enum
   /* this is the maximum size of a block request.
      most bittorrent clients will reject requests
      larger than this size. */
+	// Support for 32KB block request cause bt clients uses this 
+// To minimize traffic...
   MAX_BLOCK_SIZE = (1024 * 16)
+//	MAX_BLOCK_SIZE = (1024 * 4) //I2P ?
 };
 
 /**

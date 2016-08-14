@@ -108,6 +108,7 @@ struct tr_session
     bool                         isUTPEnabled;
     bool                         isLPDEnabled;
     bool                         isBlocklistEnabled;
+	bool		       	          isI2PEnabled;
     bool                         isPrefetchEnabled;
     bool                         isTorrentDoneScriptEnabled;
     bool                         isClosing;
@@ -153,6 +154,10 @@ struct tr_session
 
     int                          uploadSlotsPerTorrent;
 
+	int			    I2PProxyPort;
+    int			    I2PBobPort;
+    int			    I2PTunnelMode;
+
     /* The UDP sockets used for the DHT and uTP. */
     tr_port                      udp_port;
     int                          udp_socket;
@@ -189,6 +194,8 @@ struct tr_session
     char *                       torrentDir;
     char *                       incompleteDir;
 
+	char *			I2PRouter;
+
     char *                       blocklist_url;
 
     struct tr_device_info *      downloadDir;
@@ -196,6 +203,10 @@ struct tr_session
     struct tr_list *             blocklists;
     struct tr_peerMgr *          peerMgr;
     struct tr_shared *           shared;
+
+	struct tr_i2p_tunnel * 	tunnel;
+
+	struct Sam3Session * Sam3Session;
 
     struct tr_cache *            cache;
 
@@ -224,7 +235,7 @@ struct tr_session
 
     uint16_t                     idleLimitMinutes;
 
-    struct tr_bindinfo         * public_ipv4;
+	struct tr_bindinfo         * public_ipv4;
     struct tr_bindinfo         * public_ipv6;
 };
 

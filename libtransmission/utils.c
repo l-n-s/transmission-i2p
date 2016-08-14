@@ -52,6 +52,7 @@
  #include <windows.h> /* Sleep () */
 #endif
 
+
 #include "transmission.h"
 #include "fdlimit.h"
 #include "ConvertUTF.h"
@@ -62,7 +63,15 @@
 #include "platform-quota.h" /* tr_device_info_create(), tr_device_info_get_free_space(), tr_device_info_free() */
 #include "variant.h"
 #include "version.h"
-
+#include "base32.h"
+#include "openssl/sha.h"
+#include <stddef.h>
+#include <wchar.h>
+#include <string.h>
+#include <openssl/hmac.h>
+#include <openssl/evp.h>
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
 
 time_t __tr_current_time   = 0;
 
@@ -850,6 +859,177 @@ tr_addressIsIP (const char * str)
   return tr_address_from_string (&tmp, str);
 }
 
+bool
+tracker_is_on_i2p (const char * str)
+{
+        if(strstr(str,".i2p/") != NULL)
+	    return true;
+
+	return false;
+}
+
+/*
+ * Search and replace a string with another string , in a string
+ * */
+char *replace_str(const char *str, const char *old, const char *newstr)
+{
+	char *ret, *r;
+	const char *p, *q;
+	size_t oldlen = strlen(old);
+	size_t count, retlen, newlen = strlen(newstr);
+
+	if (oldlen != newlen) {
+		for (count = 0, p = str; (q = strstr(p, old)) != NULL; p = q + oldlen)
+			count++;
+		/* this is undefined if p - str > PTRDIFF_MAX */
+		retlen = p - str + strlen(p) + count * (newlen - oldlen);
+	} else
+		retlen = strlen(str);
+
+	if ((ret = malloc(retlen + 1)) == NULL)
+		return NULL;
+
+	for (r = ret, p = str; (q = strstr(p, old)) != NULL; p = q + oldlen) {
+		/* this is undefined if q - p > PTRDIFF_MAX */
+		ptrdiff_t l = q - p;
+		memcpy(r, p, l);
+		r += l;
+		memcpy(r, newstr, newlen);
+		r += newlen;
+	}
+	strcpy(r, p);
+
+	return ret;
+}
+
+char *base64(const unsigned char *input, int length)
+{
+BIO *bmem, *b64;
+BUF_MEM *bptr;
+char *buff = (char *)malloc(bptr->length);	
+
+b64 = BIO_new(BIO_f_base64());
+bmem = BIO_new(BIO_s_mem());
+b64 = BIO_push(b64, bmem);
+BIO_write(b64, input, length);
+BIO_flush(b64);
+BIO_get_mem_ptr(b64, &bptr);
+
+
+memcpy(buff, bptr->data, bptr->length-1);
+buff[bptr->length-1] = 0;
+
+BIO_free_all(b64);
+
+return buff;
+}
+
+char *unbase64(char *input, int length)
+{
+  BIO *b64, *bmem;
+	int retlen;
+
+  uint8_t *buffer;
+	if ((buffer = (uint8_t *)malloc(length + 1)) == NULL)
+		return NULL;
+  memset(buffer, 0, length);
+
+  b64 = BIO_new(BIO_f_base64());
+  bmem = BIO_new_mem_buf(input, length);
+  bmem = BIO_push(b64, bmem);
+
+  retlen = BIO_read(bmem, buffer, length);
+	  if (!retlen)
+    {
+      /* try again, but with the BIO_FLAGS_BASE64_NO_NL flag */
+      BIO_free_all (bmem);
+      b64 = BIO_new (BIO_f_base64 ());
+      BIO_set_flags (b64, BIO_FLAGS_BASE64_NO_NL);
+      bmem = BIO_new_mem_buf ((unsigned char*)input, length);
+      bmem = BIO_push (b64, bmem);
+      retlen = BIO_read (bmem, buffer, length);
+    }
+
+  BIO_free_all(bmem);
+
+  return (char *)buffer;
+}
+
+char *i2p_b64_to_b32(char *input)
+{
+  char *info;
+  int i;
+  char *c;
+  unsigned char hash[SHA256_DIGEST_LENGTH];	
+  uint8_t new_host_b32[64];
+  SHA256_CTX ctx;
+
+	c = replace_str(input,".i2p", "");
+	c = replace_str(c,"-", "+");
+	c = replace_str(c,"~", "/");
+
+
+	info = unbase64(c, strlen(c));
+
+			
+   SHA256_Init(&ctx);		
+   SHA256_Update(&ctx,info,387);
+   SHA256_Final(hash, &ctx);
+			
+			
+		base32_encode((const uint8_t*)hash, SHA256_DIGEST_LENGTH, new_host_b32, sizeof(new_host_b32));
+            c = (char *)new_host_b32 ;
+			for(i = 0; c[i]; i++){
+            c[i] = tolower(c[i]);
+            }
+	strcat(c,".b32.i2p");
+  return c;
+}
+
+char *str_join (char *cs, ...)
+{
+   va_list va;
+   const char *ct;
+   char *s = NULL;
+   size_t size = 0;
+
+   va_start (va, cs);
+/* (1) */
+   while ((ct = va_arg (va, char *)) != NULL)
+   {
+      void *tmp = NULL;
+
+/* (2) */
+      size += strlen (ct) + strlen (cs);
+      tmp = realloc (s, sizeof (*s) * (size + 1));
+      if (tmp != NULL)
+      {
+         if (s == NULL)
+         {
+/* (3) */
+            s = tmp;
+            strcpy (s, ct);
+         }
+         else
+         {
+/* (4) */
+             s = tmp;
+             strcat (s, cs);
+             strcat (s, ct);
+         }
+      }
+      else
+      {
+         fprintf (stderr, "Memoire insuffisante\n");
+         free (s);
+         s = NULL;
+         exit (EXIT_FAILURE);
+      }
+   }
+   return s;
+}
+
+
 int
 tr_urlParse (const char * url_in,
              int          len,
@@ -892,11 +1072,12 @@ tr_urlParse (const char * url_in,
             }
           path = pch;
         }
+
     }
 
   err = !host || !path || !protocol;
 
-  if (!err && !port)
+  if (!err && !port  && (tracker_is_on_i2p(url_in) != true))
     {
       if (!strcmp (protocol, "udp")) port = 80;
       else if (!strcmp (protocol, "ftp")) port = 21;
@@ -907,6 +1088,11 @@ tr_urlParse (const char * url_in,
 
   if (!err)
     {
+		//i2p b64 to b32 adresse
+ /* if( tracker_is_on_i2p(url_in) == true &&  strlen(url_in) > 512)
+		host = i2p_b64_to_b32((char *)host);*/
+           
+		
       if (setme_protocol) *setme_protocol = tr_strndup (protocol, protocol_len);
 
       if (setme_host){ ((char*)host)[-3] = ':'; *setme_host =
@@ -924,12 +1110,7 @@ tr_urlParse (const char * url_in,
   return err;
 }
 
-#include <string.h>
-#include <openssl/sha.h>
-#include <openssl/hmac.h>
-#include <openssl/evp.h>
-#include <openssl/bio.h>
-#include <openssl/buffer.h>
+
 
 char *
 tr_base64_encode (const void * input, int length, int * setme_len)
@@ -1832,3 +2013,76 @@ tr_formatter_get_units (void * vdict)
     tr_variantListAddStr (l, speed_units.units[i].name);
 }
 
+char *
+transform_host(char * url)
+{
+	if( tracker_is_on_i2p(url) == true &&  strlen(url) > 512 && strstr (url, "~") != NULL && strstr (url, "-") != NULL)
+  {
+											
+//i2p b64 to b32
+  int n;
+  int port = 0;  
+  char * tmp;
+  char * pch;
+  size_t host_len;
+  size_t protocol_len;
+  const char * host = NULL;
+  const char * protocol = NULL;
+  const char * path = NULL;  
+ 
+
+  tmp = tr_strndup (url, strlen(url));
+  if ((pch = strstr (tmp, "://")))
+    {
+      *pch = '\0';
+      protocol = tmp;
+      protocol_len = pch - protocol;
+      pch += 3;
+      if ((n = strcspn (pch, ":/")))
+        {
+          const int havePort = pch[n] == ':';
+          host = pch;
+          host_len = n;
+          pch += n;
+          if (pch && *pch)
+            *pch++ = '\0';
+          if (havePort)
+            {
+              char * end;
+              port = strtol (pch, &end, 10);
+              pch = end;
+            }
+          path = pch;
+        }
+
+    }
+
+url = replace_str (url,host,"");		  
+sprintf(url+7,"%s",i2p_b64_to_b32((char*)host));
+	  if (url != NULL)
+	  {
+strcat(url,"/\0");
+sprintf(url+strlen(url),"%s",path);
+		 
+	  }
+  }
+	  return url;
+}
+
+const char * stateToString(int state) {
+	switch(state) {
+		case TUNNEL_STATE_IS_UNKNOWN:
+			return "I2P Unknown tunnel state";
+		case TUNNEL_STATE_IS_RUNNING:
+			return "I2P Tunnel is up and running";
+		case TUNNEL_STATE_IS_NOT_RUNNING:
+			return "I2P Tunnel is not running";
+		case TUNNEL_STATE_ROUTER_UNREACHABLE:
+			return "I2P Router is unreachable";
+		case TUNNEL_STATE_STARTED:
+			return "I2P Tunnel is starting up";
+		case TUNNEL_STATE_I2P_DISABLED:
+			default:
+			return "I2P is disabled";
+	}
+}

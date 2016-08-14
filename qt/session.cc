@@ -243,6 +243,27 @@ Session :: updatePref (int key)
           tr_sessionSetRPCWhitelist (mySession, myPrefs.getString (key).toUtf8 ().constData ());
         break;
 
+		case Prefs :: I2P_ENABLED:
+		if( mySession )
+		    tr_sessionSetI2PEnabled(mySession,myPrefs.getBool(key) );
+		break;
+	case Prefs :: I2P_ROUTER:
+		if( mySession )
+		    tr_sessionSetI2PRouter(mySession,myPrefs.getString(key).toUtf8().constData() );
+		break;
+	case Prefs :: I2P_BOB_PORT:
+		if( mySession )
+		    tr_sessionSetI2PBobPort(mySession,myPrefs.getInt(key) );
+		break;
+	case Prefs :: I2P_PROXY_PORT:
+		if( mySession )
+		    tr_sessionSetI2PProxyPort(mySession,myPrefs.getInt(key) );
+		break;
+	case Prefs :: I2P_TUNNEL_MODE:
+		if( mySession )
+		    tr_sessionSetI2PTunnelMode(mySession,myPrefs.getInt(key) );
+		break;		
+
       default:
         std::cerr << "unhandled pref: " << key << std::endl;
     }

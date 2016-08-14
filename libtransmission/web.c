@@ -28,6 +28,7 @@
 #include "list.h"
 #include "log.h"
 #include "net.h" /* tr_address */
+#include "neti2p.h" /* tr_address */
 #include "torrent.h"
 #include "platform.h" /* mutex */
 #include "session.h"
@@ -35,6 +36,8 @@
 #include "utils.h"
 #include "version.h" /* User-Agent */
 #include "web.h"
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #if LIBCURL_VERSION_NUM >= 0x070F06 /* CURLOPT_SOCKOPT* was added in 7.15.6 */
  #define USE_LIBCURL_SOCKOPT
@@ -134,6 +137,8 @@ writeFunc (void * ptr, size_t size, size_t nmemb, void * vtask)
 
   evbuffer_add (task->response, ptr, byteCount);
   dbgmsg ("wrote %zu bytes to task %p's buffer", byteCount, task);
+
+  dbgmsg( "wrote %u bytes to task %p's buffer", byteCount, task );
   return byteCount;
 }
 
@@ -178,6 +183,8 @@ createEasy (tr_session * s, struct tr_web * web, struct tr_web_task * task)
 {
   bool is_default_value;
   const tr_address * addr;
+  char *i2pp = strstr( task->url, ".i2p/" );
+  char *endpoint_key = task->url;
   CURL * e = task->curl_easy = curl_easy_init ();
 
   task->timeout_secs = getTimeoutFromURL (task);
@@ -202,12 +209,66 @@ createEasy (tr_session * s, struct tr_web * web, struct tr_web_task * task)
       curl_easy_setopt (e, CURLOPT_SSL_VERIFYPEER, 0L);
     }
   curl_easy_setopt (e, CURLOPT_TIMEOUT, task->timeout_secs);
+  if (tr_sessionGetI2PEnabled (s) != true)
   curl_easy_setopt (e, CURLOPT_URL, task->url);
   curl_easy_setopt (e, CURLOPT_USERAGENT, TR_NAME "/" SHORT_VERSION_STRING);
   curl_easy_setopt (e, CURLOPT_VERBOSE, (long)(web->curl_verbose?1:0));
   curl_easy_setopt (e, CURLOPT_WRITEDATA, task);
   curl_easy_setopt (e, CURLOPT_WRITEFUNCTION, writeFunc);
+	// Check if host in url is an <name>.i2p or having an destination key <key>.i2p
+	if( i2pp != NULL ) {
+		if( strncmp( task->url, "http://", 7 ) == 0 )
+			endpoint_key += 7;
+		
+		// Lets verify that host in url is and endpoint key
+		/*if( ( i2pp - endpoint_key ) != 516 ) 
+			endpoint_key=NULL;*/
+	} else
+		endpoint_key=NULL;
+	
+	// lets handle i2p tracker url if detected
+	if( i2pp != NULL || endpoint_key != NULL ) {
 
+		// Verify all
+		char addr[512];
+		char custom[1024]={0};	// custom request consists of [endpoint_key]\nGET "[uri]"\n
+		char newurl[4096]={0};
+		int len = i2pp - endpoint_key;
+		char newhost[1024]={0};
+		struct curl_slist *newheaders=NULL;
+		
+		assert( endpoint_key != NULL );
+		
+		if( i2pp - endpoint_key < 516)
+			len+=4;
+		
+		memcpy(custom,endpoint_key,  len);
+		strcat(custom,"\r\nGET");
+		
+		// Connect to the inbound tunnel and send a custom request that initiates the tunnel to
+		// endpoint key and than performs the  actual GET request
+		// the tunnel has been initialized with destination key
+		
+		// Frist of all mofidy the url
+		sprintf(newurl,"http://%s:%d", tr_address_to_string_with_buf( tr_netI2PGetOutboundTunnelAddress(s), addr, 512 ) , s->public_peer_port-1 );
+		strcat(newurl,i2pp+4);
+		curl_easy_setopt( e, CURLOPT_URL,newurl);
+		// then manipulate the headers so it confirms with the original url
+		strcat(newhost,"Host: ");
+		strncat(newhost,endpoint_key,len);
+		newheaders = curl_slist_append( newheaders, "User-Agent: " TR_NAME "/" LONG_VERSION_STRING );
+		newheaders = curl_slist_append( newheaders, newhost );
+		newheaders = curl_slist_append( newheaders, "Accept: */*" );
+		newheaders = curl_slist_append( newheaders, "Accept-Encoding: defalte, gzip" );
+		curl_easy_setopt( e, CURLOPT_HTTPHEADER, newheaders);
+		
+		curl_easy_setopt( e, CURLOPT_TIMEOUT, 20);	// Set timeout to 20 secs
+		curl_easy_setopt( e, CURLOPT_CUSTOMREQUEST,custom);
+	
+		
+	}else {	
+
+	
   if (((addr = tr_sessionGetPublicAddress (s, TR_AF_INET, &is_default_value))) && !is_default_value)
     curl_easy_setopt (e, CURLOPT_INTERFACE, tr_address_to_string (addr));
   else if (((addr = tr_sessionGetPublicAddress (s, TR_AF_INET6, &is_default_value))) && !is_default_value)
@@ -218,6 +279,8 @@ createEasy (tr_session * s, struct tr_web * web, struct tr_web_task * task)
 
   if (web->cookie_filename != NULL)
     curl_easy_setopt (e, CURLOPT_COOKIEFILE, web->cookie_filename);
+
+	}			
 
   if (task->range != NULL)
     {
@@ -366,7 +429,7 @@ tr_select (int nfds,
       dbgmsg ("Error: select (%d) %s", e, errstr);
     }
 #else
-  select (nfds, r_fd_set, w_fd_set, c_fd_set, t);
+ select (nfds, r_fd_set, w_fd_set, c_fd_set, t);
 #endif
 }
 
@@ -477,6 +540,7 @@ tr_webThreadFunc (void * vsession)
           usec = msec * 1000;
           t.tv_sec =  usec / 1000000;
           t.tv_usec = usec % 1000000;
+
           tr_select (max_fd+1, &r_fd_set, &w_fd_set, &c_fd_set, &t);
         }
 

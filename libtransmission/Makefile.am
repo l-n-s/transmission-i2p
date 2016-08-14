@@ -21,6 +21,7 @@ libtransmission_a_SOURCES = \
   announcer-http.c \
   announcer-udp.c \
   bandwidth.c \
+  base32.c \
   bitfield.c \
   blocklist.c \
   cache.c \
@@ -39,6 +40,7 @@ libtransmission_a_SOURCES = \
   metainfo.c \
   natpmp.c \
   net.c \
+  neti2p.c \
   peer-io.c \
   peer-mgr.c \
   peer-msgs.c \
@@ -75,6 +77,7 @@ noinst_HEADERS = \
   announcer.h \
   announcer-common.h \
   bandwidth.h \
+  base32.h \
   bitfield.h \
   blocklist.h \
   cache.h \
@@ -153,6 +156,8 @@ apps_ldflags = \
 
 apps_ldadd = \
   ./libtransmission.a  \
+  $(top_builddir)/third-party/libbob/libbob.a \
+  $(top_builddir)/third-party/libsam3/libsam3.a \
   @LIBUPNP_LIBS@ \
   @LIBNATPMP_LIBS@ \
   @INTLLIBS@ \
@@ -162,7 +167,7 @@ apps_ldadd = \
   @LIBEVENT_LIBS@ \
   @OPENSSL_LIBS@ \
   @PTHREAD_LIBS@ \
-  @ZLIB_LIBS@
+  @ZLIB_LIBS@ 
 
 TEST_SOURCES = libtransmission-test.c
 

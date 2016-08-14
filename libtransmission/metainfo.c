@@ -181,6 +181,7 @@ tr_convertAnnounceToScrape (const char * announce)
    * it will be taken as a sign that that tracker doesn't support
    * the scrape convention. If it does, substitute 'scrape' for
    * 'announce' to find the scrape page. */
+	
   if (((s = strrchr (announce, '/'))) && !strncmp (++s, "announce", 8))
     {
       const char * prefix = announce;
@@ -196,7 +197,7 @@ tr_convertAnnounceToScrape (const char * announce)
       assert (walk - scrape == (int)alloc_len);
     }
   /* Some torrents with UDP annouce URLs don't have /announce. */
-  else if (!strncmp (announce, "udp:", 4))
+    else if (!strncmp (announce, "udp:", 4))
     {
       scrape = tr_strdup (announce);
     }
@@ -235,7 +236,8 @@ getannounce (tr_info * inf, tr_variant * meta)
             {
               if (tr_variantGetStr (tr_variantListChild (tier, j), &str, &len))
                 {
-                  char * url = tr_strstrip (tr_strndup (str, len));
+					char * url = tr_strstrip (tr_strndup (str, len));					
+					
                   if (!tr_urlIsValidTracker (url))
                     {
                       tr_free (url);
@@ -278,7 +280,7 @@ getannounce (tr_info * inf, tr_variant * meta)
         {
           trackers = tr_new0 (tr_tracker_info, 1);
           trackers[trackerCount].tier = 0;
-          trackers[trackerCount].announce = url;
+          trackers[trackerCount].announce = url;	
           trackers[trackerCount].scrape = tr_convertAnnounceToScrape (url);
           trackers[trackerCount].id = 0;
           trackerCount++;
@@ -343,7 +345,7 @@ geturllist (tr_info * inf, tr_variant * meta)
       for (i=0; i<n; i++)
         {
           if (tr_variantGetStr (tr_variantListChild (urls, i), &url, NULL))
-            {
+            {				
               char * fixed_url = fix_webseed_url (inf, url);
 
               if (fixed_url != NULL)
@@ -574,7 +576,9 @@ tr_metainfoFree (tr_info * inf)
   for (i=0; i<inf->trackerCount; i++)
     {
       tr_free (inf->trackers[i].announce);
+		//memset (inf->trackers[i].announce, '\0', sizeof (tr_info));
       tr_free (inf->trackers[i].scrape);
+		//memset (inf->trackers[i].scrape, '\0', sizeof (tr_info));
     }
   tr_free (inf->trackers);
 

@@ -516,6 +516,8 @@ on_startup (GApplication * application, gpointer user_data)
   /* initialize the libtransmission session */
   session = tr_sessionInit ("gtk", cbdata->config_dir, TRUE, gtr_pref_get_all ());
 
+
+	
   gtr_pref_flag_set (TR_KEY_alt_speed_enabled, tr_sessionUsesAltSpeed (session));
   gtr_pref_int_set  (TR_KEY_peer_port, tr_sessionGetPeerPort (session));
   cbdata->core = gtr_core_new (session);
@@ -551,6 +553,7 @@ on_startup (GApplication * application, gpointer user_data)
 
   /* if there's no magnet link handler registered, register us */
   ensure_magnet_handler_exists ();
+
 }
 
 static void
@@ -699,6 +702,8 @@ static gboolean update_model_once (gpointer gdata);
 static void
 app_setup (GtkWindow * wind, struct cbdata * cbdata)
 {
+  tr_session * session = gtr_core_session (cbdata->core);
+	
   if (cbdata->is_iconified)
     gtr_pref_flag_set (TR_KEY_show_notification_area_icon, TRUE);
 
@@ -753,6 +758,33 @@ app_setup (GtkWindow * wind, struct cbdata * cbdata)
           case GTK_RESPONSE_ACCEPT:
             /* only show it once */
             gtr_pref_flag_set (TR_KEY_user_has_given_informed_consent, TRUE);
+            gtk_widget_destroy (w);
+            break;
+
+          default:
+            exit (0);
+        }
+    }
+
+      //I2P is enabled, but bob won't start, show a message!
+ if (gtr_pref_flag_get (TR_KEY_I2P_ENABLED == true) 
+     && tr_sessionGetI2PTunnelState(session) != TUNNEL_STATE_IS_RUNNING
+         && tr_sessionGetI2PTunnelState(session) != TUNNEL_STATE_STARTED)
+    {
+      GtkWidget * w = gtk_message_dialog_new (GTK_WINDOW (wind),
+                                              GTK_DIALOG_DESTROY_WITH_PARENT,
+                                              GTK_MESSAGE_OTHER,
+                                              GTK_BUTTONS_NONE,
+                                              "%s",
+        _("I2P is enabled, but bob tunnel unreachable. Do you want to cancel the start process to check your bob tunnel settings?"));
+      gtk_dialog_add_button (GTK_DIALOG (w), GTK_STOCK_CANCEL, GTK_RESPONSE_REJECT);
+      gtk_dialog_add_button (GTK_DIALOG (w), _("Continue with bob and i2p disabled"), GTK_RESPONSE_ACCEPT);
+		gtk_dialog_set_default_response (GTK_DIALOG (w), GTK_RESPONSE_REJECT);
+      switch (gtk_dialog_run (GTK_DIALOG (w)))
+        {
+          case GTK_RESPONSE_ACCEPT:
+            /* disable i2p if no response from bob */
+            gtr_pref_flag_set (TR_KEY_I2P_ENABLED, false);
             gtk_widget_destroy (w);
             break;
 
@@ -1280,7 +1312,28 @@ on_prefs_changed (TrCore * core UNUSED, const tr_quark key, gpointer data)
         tr_sessionSetPeerPortRandomOnStart (tr, gtr_pref_flag_get (key));
         break;
 
-      case TR_KEY_incomplete_dir:
+	  case TR_KEY_I2P_ROUTER:
+		tr_sessionSetI2PRouter(tr, (const char*)gtr_pref_string_get(key));
+        break;
+
+	  case TR_KEY_I2P_ENABLED:
+        tr_sessionSetI2PEnabled(tr, gtr_pref_flag_get(key));
+			
+        break;
+
+	  case TR_KEY_I2P_BOB_PORT:
+        tr_sessionSetI2PBobPort(tr, gtr_pref_int_get(key));
+        break;		
+
+	  case TR_KEY_I2P_TUNNEL_MODE:
+        tr_sessionSetI2PTunnelMode(tr, gtr_pref_int_get(key));
+        break;
+
+	  case TR_KEY_I2P_PROXY_PORT:
+        tr_sessionSetI2PProxyPort(tr, gtr_pref_int_get(key));
+        break;	
+
+	  case TR_KEY_incomplete_dir:
         tr_sessionSetIncompleteDir (tr, gtr_pref_string_get (key));
         break;
 

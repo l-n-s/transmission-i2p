@@ -113,6 +113,7 @@ void gtr_core_add_files (TrCore     * core,
 /** @brief Add a torrent from a URL */
 bool gtr_core_add_from_url (TrCore * core, const char * url);
 
+
 /** @brief Add a torrent.
     @param ctor this function assumes ownership of the ctor */
 void gtr_core_add_ctor (TrCore * core, tr_ctor * ctor);

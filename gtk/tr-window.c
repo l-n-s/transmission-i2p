@@ -39,6 +39,7 @@
 #include "tr-window.h"
 #include "util.h"
 
+
 typedef struct
 {
     GtkWidget          * speedlimit_on_item[2];
@@ -53,6 +54,8 @@ typedef struct
     GtkWidget          * status_menu;
     GtkLabel           * ul_lb;
     GtkLabel           * dl_lb;
+	GtkLabel           * stats_i2p;
+	GtkLabel           * stats_dht;
     GtkLabel           * stats_lb;
     GtkWidget          * alt_speed_image;
     GtkWidget          * alt_speed_button;
@@ -599,6 +602,7 @@ gtr_window_new (GtkApplication * app, GtkUIManager * ui_mgr, TrCore * core)
   PrivateData    * p;
   GtkWidget      * sibling = NULL;
   GtkWidget      * ul_lb, * dl_lb;
+  GtkWidget      * stats_i2p, * stats_dht;
   GtkWidget      * mainmenu, *toolbar, *filter, *list, *status;
   GtkWidget      * vbox, *w, *self, *menu;
   GtkWidget      * grid_w;
@@ -695,6 +699,27 @@ gtr_window_new (GtkApplication * app, GtkUIManager * ui_mgr, TrCore * core)
   gtk_button_set_image (GTK_BUTTON (w), p->alt_speed_image);
   gtk_button_set_relief (GTK_BUTTON (w), GTK_RELIEF_NONE);
   g_signal_connect (w, "toggled", G_CALLBACK (alt_speed_toggled_cb), p);
+  gtk_grid_attach_next_to (grid, w, sibling, GTK_POS_RIGHT, 1, 1);
+  sibling = w;
+
+			  /* DHT  */
+  w = stats_dht = gtk_label_new (NULL);
+  p->stats_dht = GTK_LABEL (w);
+  gtk_label_set_single_line_mode (p->stats_dht, TRUE);
+  gtk_grid_attach_next_to (grid, w, sibling, GTK_POS_RIGHT, 1, 1);
+  sibling = w;
+
+		  /* Bob tunnel  */
+  w = stats_i2p = gtk_label_new (NULL);
+  p->stats_i2p = GTK_LABEL (w);
+  gtk_label_set_single_line_mode (p->stats_i2p, TRUE);
+  gtk_grid_attach_next_to (grid, w, sibling, GTK_POS_RIGHT, 1, 1);
+  sibling = w;
+
+				  /* DHT  */
+  w = stats_dht = gtk_label_new (NULL);
+  p->stats_dht = GTK_LABEL (w);
+  gtk_label_set_single_line_mode (p->stats_dht, TRUE);
   gtk_grid_attach_next_to (grid, w, sibling, GTK_POS_RIGHT, 1, 1);
   sibling = w;
 
@@ -848,10 +873,21 @@ updateSpeeds (PrivateData * p)
       double downSpeed = 0;
       int upCount = 0;
       int downCount = 0;
+	  int numnodes =0;
       GtkTreeIter iter;
       GtkTreeModel * model = gtr_core_model (p->core);
+	  int status = tr_dhtStatus (session, 2, &numnodes);  //TR_AF_INET = 2;
 
+	  g_snprintf (text_str, sizeof(text_str), "%s  |", stateToString(tr_sessionGetI2PTunnelState(session)));
+      gtr_label_set_text (p->stats_i2p, text_str);
+      gtk_widget_set_visible (GTK_WIDGET (p->stats_i2p), TRUE);
 
+	  g_snprintf (text_str, sizeof(text_str), "  DHT Status:%s  %d nodes",
+	              tr_dhtPrintableStatus (status), numnodes);
+      gtr_label_set_text (p->stats_dht, text_str);                             
+      gtk_widget_set_visible (GTK_WIDGET (p->stats_dht), TRUE);
+
+		
       if (gtk_tree_model_iter_nth_child (model, &iter, NULL, 0)) do
         {
           int uc, dc;
@@ -877,6 +913,7 @@ updateSpeeds (PrivateData * p)
       g_snprintf (text_str, sizeof(text_str), "%s %s", speed_str, gtr_get_unicode_string (GTR_UNICODE_UP));
       gtr_label_set_text (p->ul_lb, text_str);
       gtk_widget_set_visible (GTK_WIDGET (p->ul_lb), ((downCount>0) || (upCount>0)));
+
     }
 }
 

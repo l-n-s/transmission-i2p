@@ -63,7 +63,9 @@ static char*
 get_name_from_host (const char * host)
 {
   char * name;
-  const char * dot = strrchr (host, '.');
+  const char * dot;
+	
+  dot = strrchr (host, '.');
 
   if (tr_addressIsIP (host))
     name = g_strdup (host);
@@ -72,8 +74,12 @@ get_name_from_host (const char * host)
   else
     name = g_strdup (host);
 
+	if(strstr( host , ".i2p" ) == NULL)
   *name = g_ascii_toupper (*name);
-
+	
+  	if(strstr( name , "AAAA" ) != NULL)
+    sprintf(name,"%s",i2p_b64_to_b32((char*)host));
+	
   return name;
 }
 
@@ -237,8 +243,10 @@ tracker_filter_model_update (gpointer gstore)
           GtkTreeRowReference * reference;
           tr_session * session = g_object_get_qdata (G_OBJECT (store), SESSION_KEY);
           const char * host = hosts->pdata[i];
-          char * name = get_name_from_host (host);
+          char * name = get_name_from_host (host);	
           const int count = * (int*)g_hash_table_lookup (hosts_hash, host);
+		  if(strstr( name , "AAAA" ) != NULL)
+		  sprintf(name,"%s",i2p_b64_to_b32((char*)host));
           gtk_tree_store_insert_with_values (store, &add, NULL, store_pos,
                                              TRACKER_FILTER_COL_HOST, host,
                                              TRACKER_FILTER_COL_NAME, name,

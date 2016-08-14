@@ -246,6 +246,7 @@ dht_bootstrap (void *closure)
             if (i == 0)
                 tr_logAddNamedInfo ("DHT",
                         "Attempting bootstrap from dht.transmissionbt.com");
+			if (tr_sessionGetI2PEnabled (session) != true)
             bootstrap_from_name ("dht.transmissionbt.com", 6881,
                                  bootstrap_af (session));
         }
@@ -312,6 +313,7 @@ tr_dhtInit (tr_session *ss)
     }
 
     rc = dht_init (ss->udp_socket, ss->udp6_socket, myid, NULL);
+	printf("dht %d",rc);
     if (rc < 0)
         goto fail;
 
@@ -367,6 +369,21 @@ tr_dhtUninit (tr_session *ss)
 
         tr_logAddNamedInfo ("DHT", "Saving %d (%d + %d) nodes", n, num, num6);
 
+		if(tr_sessionGetI2PEnabled (ss) == true)
+		{
+		j = 0;
+        for (i=0; i<num; ++i) {
+            memcpy (compact + j, &sins[i].sin_addr, 32);
+            memcpy (compact + j + 4, &sins[i].sin_port, 2);
+            j += 34;
+        }	
+		tr_variantInitDict (&benc, 3);
+        tr_variantDictAddRaw (&benc, TR_KEY_id, myid, 20);
+        if (num > 0)
+            tr_variantDictAddRaw (&benc, TR_KEY_nodes, compact, num * 34);	
+		}
+        else
+		{	
         j = 0;
         for (i=0; i<num; ++i) {
             memcpy (compact + j, &sins[i].sin_addr, 4);
@@ -385,6 +402,7 @@ tr_dhtUninit (tr_session *ss)
             tr_variantDictAddRaw (&benc, TR_KEY_nodes, compact, num * 6);
         if (num6 > 0)
             tr_variantDictAddRaw (&benc, TR_KEY_nodes6, compact6, num6 * 18);
+		}
         dat_file = tr_buildPath (ss->configDir, "dht.dat", NULL);
         tr_variantToFile (&benc, TR_VARIANT_FMT_BENC, dat_file);
         tr_variantFree (&benc);
@@ -416,7 +434,7 @@ getstatus (void * cl)
     struct getstatus_closure * closure = cl;
     int good, dubious, incoming;
 
-    dht_nodes (closure->af, &good, &dubious, NULL, &incoming);
+   dht_nodes (closure->af, &good, &dubious, NULL, &incoming);
 
     closure->count = good + dubious;
 
@@ -494,7 +512,15 @@ tr_dhtAddNode (tr_session       * ss,
         sin6.sin6_port = htons (port);
         dht_ping_node ((struct sockaddr*)&sin6, sizeof (sin6));
         return 1;
-    }
+    } /*else if (address->type == TR_AF_INETI2P) {
+        struct sockaddr_in sini2p;
+        memset (&sini2p, 0, sizeof (sini2p));
+        sini2p.sin_family = AF_INET;
+        memcpy (&sini2p.sin_addr,session->I2PRouter, 4);
+        sini2p.sin_port = htons(session->Sam3Session->port);
+        dht_ping_node ((struct sockaddr*)&sini2p, sizeof (sini2p));
+        return 1;
+    }  */
 
     return 0;
 }
@@ -525,7 +551,8 @@ callback (void *ignore UNUSED, int event,
             size_t i, n;
             tr_pex * pex;
             if (event == DHT_EVENT_VALUES)
-                pex = tr_peerMgrCompactToPex (data, data_len, NULL, 0, &n);
+                pex = tr_peerMgrCompactToPex (data, data_len, NULL, 0, &n,
+                                              tr_sessionGetI2PEnabled (session));
             else
                 pex = tr_peerMgrCompact6ToPex (data, data_len, NULL, 0, &n);
             for (i=0; i<n; ++i)
@@ -567,6 +594,11 @@ tr_dhtAnnounce (tr_torrent *tor, int af, bool announce)
     }
 
     if (status >= TR_DHT_POOR) {
+		if(tr_sessionGetI2PEnabled (session) == true)
+		rc = dht_search (tor->info.hash,
+                         announce ? tr_sessionGetPeerPort (session)-1 : 0,
+                         af, callback, NULL);
+		else
         rc = dht_search (tor->info.hash,
                          announce ? tr_sessionGetPeerPort (session) : 0,
                          af, callback, NULL);

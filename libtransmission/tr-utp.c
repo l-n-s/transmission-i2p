@@ -108,7 +108,7 @@ incoming (void *closure, struct UTPSocket *s)
     tr_address addr;
     tr_port port;
 
-    if (!tr_sessionIsUTPEnabled (ss)) {
+    if (!tr_sessionIsUTPEnabled (ss)/* || tr_sessionGetI2PEnabled (ss) == true*/) {
         UTP_Close (s);
         return;
     }
@@ -130,7 +130,7 @@ tr_utpSendTo (void *closure, const unsigned char *buf, size_t buflen,
 {
     tr_session *ss = closure;
 
-    if (to->sa_family == AF_INET && ss->udp_socket)
+    if ((to->sa_family == AF_INET || to->sa_family == 2) && ss->udp_socket)
         sendto (ss->udp_socket, buf, buflen, 0, to, tolen);
     else if (to->sa_family == AF_INET6 && ss->udp_socket)
         sendto (ss->udp6_socket, buf, buflen, 0, to, tolen);

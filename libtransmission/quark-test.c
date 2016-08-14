@@ -16,7 +16,9 @@ test_static_quarks (void)
       const char * str;
 
       str = tr_quark_get_string (i, &len);
+		printf("%s\n",str);
       check_int_eq (strlen(str), len);
+		
       check (tr_quark_lookup (str, len, &q));
       check_int_eq (i, q);
     }

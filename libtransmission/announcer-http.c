@@ -24,12 +24,16 @@
 #include "announcer-common.h"
 #include "log.h"
 #include "net.h" /* tr_globalIPv6 () */
+#include "neti2p.h" /* I2P  */
 #include "peer-mgr.h" /* pex */
 #include "torrent.h"
 #include "trevent.h" /* tr_runInEventThread () */
 #include "utils.h"
 #include "variant.h"
 #include "web.h" /* tr_http_escape () */
+#include <openssl/sha.h>
+#include <unistd.h>
+#include <peer-io.h>
 
 #define dbgmsg(name, ...) \
   do \
@@ -62,10 +66,43 @@ announce_url_new (const tr_session * session, const tr_announce_request * req)
     const unsigned char * ipv6;
     struct evbuffer * buf = evbuffer_new ();
     char escaped_info_hash[SHA_DIGEST_LENGTH*3 + 1];
+	bool tracker_is_on_i2p = false;
+	const char *myEndpointkey=tr_netI2PGetMyEndPointKey((tr_session *)session);
 
     tr_http_escape_sha1 (escaped_info_hash, req->info_hash);
 
     evbuffer_expand (buf, 1024);
+    
+    // Check if announce url is a i2p address
+    if( strstr(req->url,".i2p/") != NULL )
+	    tracker_is_on_i2p = true;
+
+    if( tracker_is_on_i2p == true && myEndpointkey != NULL) {	
+    evbuffer_add_printf (buf, "%s"
+                              "%c"
+                              "info_hash=%s"
+                              "&peer_id=%*.*s"
+                              "&port=%d"
+                              "&ip=%s.i2p"
+                              "&uploaded=%" PRIu64
+                              "&downloaded=%" PRIu64
+                              "&left=%" PRIu64
+                              "&numwant=%d"
+                           //   "&key=%x",
+                              "&compact=1",
+                           //   "&supportcrypto=1",
+                              req->url,
+                              strchr (req->url, '?') ? '&' : '?',
+                              escaped_info_hash,
+                              PEER_ID_LEN, PEER_ID_LEN, req->peer_id,
+                              6881,
+                         	  myEndpointkey,
+                              req->up,
+                              req->down,
+                              req->leftUntilComplete,
+                              req->numwant);//,
+                            //  req->key);
+	} else if( tracker_is_on_i2p != true){
 
     evbuffer_add_printf (buf, "%s"
                               "%c"
@@ -89,7 +126,7 @@ announce_url_new (const tr_session * session, const tr_announce_request * req)
                               req->leftUntilComplete,
                               req->numwant,
                               req->key);
-
+                            }
     if (session->encryptionMode == TR_ENCRYPTION_REQUIRED)
         evbuffer_add_printf (buf, "&requirecrypto=1");
 
@@ -131,15 +168,14 @@ listToPex (tr_variant * peerList, size_t * setme_len)
     size_t n;
     const size_t len = tr_variantListSize (peerList);
     tr_pex * pex = tr_new0 (tr_pex, len);
-
     for (i=n=0; i<len; ++i)
     {
         int64_t port;
         const char * ip;
         tr_address addr;
-        tr_variant * peer = tr_variantListChild (peerList, i);
-
-        if (peer == NULL)
+		tr_variant * peer = tr_variantListChild (peerList, i);
+		
+		if (peer == NULL)
             continue;
         if (!tr_variantDictFindStr (peer, TR_KEY_ip, &ip, NULL))
             continue;
@@ -151,9 +187,14 @@ listToPex (tr_variant * peerList, size_t * setme_len)
             continue;
         if (!tr_address_is_valid_for_peers (&addr, port))
             continue;
-
         pex[n].addr = addr;
         pex[n].port = htons ((uint16_t)port);
+		if ((strstr( ip , "AAAA.i2p" ) != NULL || strstr( ip , "AAAA" ) != NULL)
+		                         && strlen(ip) >= 516)
+		{
+			pex[n].addr.type = TR_AF_INETI2P;
+            pex[n].port = htons (6881);
+		}
         ++n;
     }
 
@@ -269,8 +310,9 @@ on_announce_done (tr_session   * session,
 
             if (tr_variantDictFindRaw (&benc, TR_KEY_peers, &raw, &len)) {
                 dbgmsg (data->log_name, "got a compact peers length of %zu", len);
-                response->pex = tr_peerMgrCompactToPex (raw, len,
-                                               NULL, 0, &response->pex_count);
+				response->pex = tr_peerMgrCompactToPex (raw, len,
+                                               NULL, 0, &response->pex_count,
+				                                tr_sessionGetI2PEnabled (session) );
             } else if (tr_variantDictFindList (&benc, TR_KEY_peers, &tmp)) {
                 response->pex = listToPex (tmp, &response->pex_count);
                 dbgmsg (data->log_name, "got a peers list with %zu entries",

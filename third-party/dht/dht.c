@@ -361,7 +361,7 @@ is_martian(const struct sockaddr *sa)
             (address[0] == 0) ||
             (address[0] == 127) ||
             ((address[0] & 0xE0) == 0xE0);
-    }
+	}
     case AF_INET6: {
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6*)sa;
         const unsigned char *address = (const unsigned char*)&sin6->sin6_addr;

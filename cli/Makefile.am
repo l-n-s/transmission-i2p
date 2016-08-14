@@ -18,6 +18,8 @@ transmission_cli_SOURCES = cli.c
 
 transmission_cli_LDADD = \
     $(top_builddir)/libtransmission/libtransmission.a \
+    $(top_builddir)/third-party/libbob/libbob.a \
+    $(top_builddir)/third-party/libsam3/libsam3.a \
     @LIBNATPMP_LIBS@ \
     @LIBUPNP_LIBS@ \
     @DHT_LIBS@ \

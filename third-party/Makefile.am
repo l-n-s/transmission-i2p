@@ -10,6 +10,8 @@ endif
 
 SUBDIRS = \
   dht \
+  libbob \
+  libsam3 \
   $(NATPMP_DIR) \
   $(MINIUPNP_DIR) \
   $(UTP_DIR)

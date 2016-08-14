@@ -64,6 +64,7 @@ receivedata(int socket, char * data, int length, int timeout)
     FD_SET(socket, &socketSet);
     timeval.tv_sec = timeout / 1000;
     timeval.tv_usec = (timeout % 1000) * 1000;
+	
     n = select(FD_SETSIZE, &socketSet, NULL, NULL, &timeval);
     if(n < 0) {
         PRINT_SOCKET_ERROR("select");

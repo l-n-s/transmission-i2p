@@ -35,6 +35,9 @@
 #include "utils.h"
 #include "variant.h"
 #include "version.h"
+#include "openssl/sha.h"
+#include "base32.h"
+#include <ctype.h> /* isdigit (), isalpha (), tolower () */
 
 /**
 ***
@@ -64,6 +67,7 @@ enum
   LTEP_HANDSHAKE          = 0,
 
   UT_PEX_ID               = 1,
+  UT_I2P_PEX_ID           = 2,	
   UT_METADATA_ID          = 3,
 
   MAX_PEX_PEER_COUNT      = 50,
@@ -207,11 +211,15 @@ struct tr_peerMsgs
 
   uint8_t         state;
   uint8_t         ut_pex_id;
+  uint8_t         i2p_pex_id;
+  uint8_t         i2p_dht_id;
   uint8_t         ut_metadata_id;
   uint16_t        pexCount;
   uint16_t        pexCount6;
+  uint16_t        pexCounti2p;
 
   tr_port         dht_port;
+  tr_port         dht_rport; //I2P DHT RPORT
 
   encryption_preference_t  encryption_preference;
 
@@ -235,6 +243,7 @@ struct tr_peerMsgs
 
   tr_pex * pex;
   tr_pex * pex6;
+  tr_pex * pexi2p;
 
   /*time_t clientSentPexAt;*/
   time_t clientSentAnythingAt;
@@ -929,7 +938,7 @@ sendLtepHandshake (tr_peerMsgs * msgs)
     if (!version_quark)
       version_quark = tr_quark_new (TR_NAME " " USERAGENT_PREFIX, -1);
 
-    dbgmsg (msgs, "sending an ltep handshake");
+  //  dbgmsg (msgs, "sending an ltep handshake");
     msgs->clientSentLtepHandshake = 1;
 
     /* decide if we want to advertise metadata xfer support (BEP 9) */
@@ -947,22 +956,39 @@ sendLtepHandshake (tr_peerMsgs * msgs)
         allow_pex = 1;
 
     tr_variantInitDict (&val, 8);
+	if(tr_sessionGetI2PEnabled (getSession (msgs)) != true){
     tr_variantDictAddInt (&val, TR_KEY_e, getSession (msgs)->encryptionMode != TR_CLEAR_PREFERRED);
     if (ipv6 != NULL)
         tr_variantDictAddRaw (&val, TR_KEY_ipv6, ipv6, 16);
+	}
     if (allow_metadata_xfer && tr_torrentHasMetadata (msgs->torrent)
                             && (msgs->torrent->infoDictLength > 0))
         tr_variantDictAddInt (&val, TR_KEY_metadata_size, msgs->torrent->infoDictLength);
-    tr_variantDictAddInt (&val, TR_KEY_p, tr_sessionGetPublicPeerPort (getSession (msgs)));
+	if(tr_sessionGetI2PEnabled (getSession (msgs)) == true)
+    tr_variantDictAddInt (&val, TR_KEY_p, 6881);
+	else
+	tr_variantDictAddInt (&val, TR_KEY_p, tr_sessionGetPublicPeerPort (getSession (msgs)));	
     tr_variantDictAddInt (&val, TR_KEY_reqq, REQQ);
+	if(tr_sessionGetI2PEnabled (getSession (msgs)) != true)
     tr_variantDictAddInt (&val, TR_KEY_upload_only, tr_torrentIsSeed (msgs->torrent));
     tr_variantDictAddQuark (&val, TR_KEY_v, version_quark);
     if (allow_metadata_xfer || allow_pex) {
         tr_variant * m  = tr_variantDictAddDict (&val, TR_KEY_m, 2);
-        if (allow_metadata_xfer)
-            tr_variantDictAddInt (m, TR_KEY_ut_metadata, UT_METADATA_ID);
-        if (allow_pex)
-            tr_variantDictAddInt (m, TR_KEY_ut_pex, UT_PEX_ID);
+        if (allow_metadata_xfer){
+			if(tr_sessionGetI2PEnabled (getSession (msgs)) == true)
+            tr_variantDictAddInt (m, TR_KEY_ut_metadata, 1);//UT_METADATA_ID i2p = 1
+			else
+			tr_variantDictAddInt (m, TR_KEY_ut_metadata, UT_METADATA_ID);	
+		}
+        if (allow_pex){
+			if(tr_sessionGetI2PEnabled (getSession (msgs)) == true)
+			{
+            tr_variantDictAddInt (m, TR_KEY_i2p_pex, 2); //I2P_PEX_ID = 2
+			tr_variantDictAddInt (m, TR_KEY_i2p_dht, 3); //I2P_DHT_ID = 3
+			}
+			else
+			tr_variantDictAddInt (m, TR_KEY_ut_pex, UT_PEX_ID);	
+		}
     }
 
     payload = tr_variantToBuf (&val, TR_VARIANT_FMT_BENC);
@@ -973,7 +999,7 @@ sendLtepHandshake (tr_peerMsgs * msgs)
     evbuffer_add_buffer (out, payload);
     pokeBatchPeriod (msgs, IMMEDIATE_PRIORITY_INTERVAL_SECS);
     dbgOutMessageLen (msgs);
-
+    dbgmsg (msgs, "sending an ltep handshake");
     /* cleanup */
     evbuffer_free (payload);
     tr_variantFree (&val);
@@ -1021,8 +1047,19 @@ parseLtepHandshake (tr_peerMsgs * msgs, int len, struct evbuffer * inbuf)
             msgs->peerSupportsPex = i != 0;
             msgs->ut_pex_id = (uint8_t) i;
             dbgmsg (msgs, "msgs->ut_pex is %d", (int)msgs->ut_pex_id);
-        }
-        if (tr_variantDictFindInt (sub, TR_KEY_ut_metadata, &i)) {
+			}
+		 if (tr_variantDictFindInt (sub, TR_KEY_i2p_pex, &i)) {
+            msgs->peerSupportsPex = i != 0; 
+			msgs->i2p_pex_id = (uint8_t) i;
+            dbgmsg (msgs, "msgs->i2p_pex is %d", (int)msgs->i2p_pex_id);
+			}
+		if (tr_variantDictFindInt (sub, TR_KEY_i2p_dht, &i)) {
+            msgs->io->dhtSupported = i != 0;
+            msgs->i2p_dht_id = (uint8_t) i;
+            dbgmsg (msgs, "msgs->i2p_dht is %d", (int)msgs->i2p_dht_id);
+			}
+
+	if (tr_variantDictFindInt (sub, TR_KEY_ut_metadata, &i)) {
             msgs->peerSupportsMetadataXfer = i != 0;
             msgs->ut_metadata_id = (uint8_t) i;
             dbgmsg (msgs, "msgs->ut_metadata_id is %d", (int)msgs->ut_metadata_id);
@@ -1034,7 +1071,7 @@ parseLtepHandshake (tr_peerMsgs * msgs, int len, struct evbuffer * inbuf)
                                     tr_peerIoGetAddress (msgs->io, NULL),
                                     false);
         }
-    }
+}
 
     /* look for metainfo size (BEP 9) */
     if (tr_variantDictFindInt (&val, TR_KEY_metadata_size, &i)) {
@@ -1070,7 +1107,15 @@ parseLtepHandshake (tr_peerMsgs * msgs, int len, struct evbuffer * inbuf)
         memcpy (&pex.addr.addr.addr6, addr, 16);
         tr_peerMgrAddPex (msgs->torrent, TR_PEER_FROM_LTEP, &pex, seedProbability);
     }
-
+ 
+/*    if (tr_peerIoIsIncoming (msgs->io)
+        && (strstr( (char *)&addr , "AAAA" ) != NULL || strstr( (char *)&addr , ".i2p" ) != NULL))
+    {
+        pex.addr.type = TR_AF_INETI2P;
+        memcpy (&pex.addr.addr.addrI2P, addr, addr_len);
+        tr_peerMgrAddPex (msgs->torrent, TR_PEER_FROM_LTEP, &pex, seedProbability);
+    }
+*/
     /* get peer's maximum request queue size */
     if (tr_variantDictFindInt (&val, TR_KEY_reqq, &i))
         msgs->reqq = i;
@@ -1088,6 +1133,7 @@ parseUtMetadata (tr_peerMsgs * msgs, int msglen, struct evbuffer * inbuf)
     int64_t msg_type = -1;
     int64_t piece = -1;
     int64_t total_size = 0;
+	int64_t i = 0;
     uint8_t * tmp = tr_new (uint8_t, msglen);
 
     tr_peerIoReadBytes (msgs->io, inbuf, tmp, msglen);
@@ -1098,11 +1144,27 @@ parseUtMetadata (tr_peerMsgs * msgs, int msglen, struct evbuffer * inbuf)
         tr_variantDictFindInt (&dict, TR_KEY_msg_type, &msg_type);
         tr_variantDictFindInt (&dict, TR_KEY_piece, &piece);
         tr_variantDictFindInt (&dict, TR_KEY_total_size, &total_size);
+		    /* get peer listening i2p dht port */
+        if (tr_variantDictFindInt (&dict, TR_KEY_port, &i)) {
+      //  msgs->dht_port = htons ((uint16_t)i);
+		msgs->dht_port = (int)i;	
+        dbgmsg (msgs, "peer i2p dht_port is now %d", (int)i);
+        }
+		if (tr_variantDictFindInt (&dict, TR_KEY_rport, &i)) {
+        msgs->dht_rport = (int)i;
+        dbgmsg (msgs, "peer i2p dht_rport is now %d", (int)i);
+        }
         tr_variantFree (&dict);
     }
 
     dbgmsg (msgs, "got ut_metadata msg: type %d, piece %d, total_size %d",
           (int)msg_type, (int)piece, (int)total_size);
+
+	if (msgs->dht_port > 0 && msgs->dht_rport > 0 && msgs->dht_port+1 == msgs->dht_rport)
+	{
+    tr_dhtAddNode (getSession (msgs),tr_peerAddress (&msgs->peer),
+                               msgs->dht_port, 0);
+	}
 
     if (msg_type == METADATA_MSG_TYPE_REJECT)
     {
@@ -1179,7 +1241,8 @@ parseUtPex (tr_peerMsgs * msgs, int msglen, struct evbuffer * inbuf)
             const uint8_t * added_f = NULL;
 
             tr_variantDictFindRaw (&val, TR_KEY_added_f, &added_f, &added_f_len);
-            pex = tr_peerMgrCompactToPex (added, added_len, added_f, added_f_len, &n);
+            pex = tr_peerMgrCompactToPex (added, added_len, added_f, added_f_len, &n,
+                                          tr_sessionGetI2PEnabled (getSession (msgs)));
 
             n = MIN (n, MAX_PEX_PEER_COUNT);
             for (i=0; i<n; ++i)
@@ -1245,7 +1308,19 @@ parseLtep (tr_peerMsgs * msgs, int msglen, struct evbuffer  * inbuf)
         msgs->peerSupportsPex = 1;
         parseUtPex (msgs, msglen, inbuf);
     }
-    else if (ltep_msgid == UT_METADATA_ID)
+    else if (ltep_msgid == UT_I2P_PEX_ID)
+    {
+        dbgmsg (msgs, "got i2p pex");
+        msgs->peerSupportsPex = 1;
+        parseUtPex (msgs, msglen, inbuf);
+    }
+/*	else if (ltep_msgid == UT_I2P_DHT_ID)
+    {
+        dbgmsg (msgs, "got i2p dht");
+        msgs->io->dhtSupported = 1;
+        parseUtPex (msgs, msglen, inbuf);
+    } */
+	else if (ltep_msgid == UT_METADATA_ID)
     {
         dbgmsg (msgs, "got ut metadata");
         msgs->peerSupportsMetadataXfer = 1;
@@ -1399,7 +1474,7 @@ messageLengthIsCorrect (const tr_peerMsgs * msg, uint8_t id, uint32_t len)
             return len > 9 && len <= 16393;
 
         case BT_PORT:
-            return len == 3;
+            return len == 3;	
 
         case BT_LTEP:
             return len >= 2;
@@ -1601,6 +1676,7 @@ readBtMessage (tr_peerMsgs * msgs, struct evbuffer * inbuf, size_t inlen)
                                tr_peerAddress (&msgs->peer),
                                msgs->dht_port, 0);
             break;
+	
 
         case BT_FEXT_SUGGEST:
             dbgmsg (msgs, "Got a BT_FEXT_SUGGEST");
@@ -2284,11 +2360,14 @@ sendPex (tr_peerMsgs * msgs)
     {
         PexDiffs diffs;
         PexDiffs diffs6;
+		PexDiffs diffsi2p;
         tr_pex * newPex = NULL;
         tr_pex * newPex6 = NULL;
+		tr_pex * newPexi2p = NULL;
         const int newCount = tr_peerMgrGetPeers (msgs->torrent, &newPex, TR_AF_INET, TR_PEERS_CONNECTED, MAX_PEX_PEER_COUNT);
         const int newCount6 = tr_peerMgrGetPeers (msgs->torrent, &newPex6, TR_AF_INET6, TR_PEERS_CONNECTED, MAX_PEX_PEER_COUNT);
-
+        const int newCounti2p = tr_peerMgrGetPeers (msgs->torrent, &newPexi2p, TR_AF_INETI2P, TR_PEERS_CONNECTED, MAX_PEX_PEER_COUNT);
+		
         /* build the diffs */
         diffs.added = tr_new (tr_pex, newCount);
         diffs.addedCount = 0;
@@ -2310,19 +2389,30 @@ sendPex (tr_peerMsgs * msgs)
                         newPex6, newCount6,
                         tr_pexCompare, sizeof (tr_pex),
                         pexDroppedCb, pexAddedCb, pexElementCb, &diffs6);
+		diffsi2p.added = tr_new (tr_pex, newCounti2p);
+        diffsi2p.addedCount = 0;
+        diffsi2p.dropped = tr_new (tr_pex, msgs->pexCounti2p);
+        diffsi2p.droppedCount = 0;
+        diffsi2p.elements = tr_new (tr_pex, newCounti2p + msgs->pexCounti2p);
+        diffsi2p.elementCount = 0;
+        tr_set_compare (msgs->pexi2p, msgs->pexCounti2p,
+                        newPexi2p, newCounti2p,
+                        tr_pexCompare, sizeof (tr_pex),
+                        pexDroppedCb, pexAddedCb, pexElementCb, &diffsi2p);
         dbgmsg (
             msgs,
-            "pex: old peer count %d+%d, new peer count %d+%d, "
-            "added %d+%d, removed %d+%d",
-            msgs->pexCount, msgs->pexCount6, newCount, newCount6,
-            diffs.addedCount, diffs6.addedCount,
-            diffs.droppedCount, diffs6.droppedCount);
+            "pex: old peer count %d+%d+%d, new peer count %d+%d+%d, "
+            "added %d+%d+%d, removed %d+%d+%d",
+            msgs->pexCount, msgs->pexCount6, msgs->pexCounti2p, newCount, newCount6,
+            newCounti2p, diffs.addedCount, diffs6.addedCount,diffsi2p.addedCount,
+            diffs.droppedCount, diffs6.droppedCount,diffsi2p.droppedCount);
 
         if (!diffs.addedCount && !diffs.droppedCount && !diffs6.addedCount &&
-            !diffs6.droppedCount)
+            !diffs6.droppedCount && !diffsi2p.addedCount && !diffsi2p.droppedCount)
         {
             tr_free (diffs.elements);
             tr_free (diffs6.elements);
+			tr_free (diffsi2p.elements);
         }
         else
         {
@@ -2339,6 +2429,9 @@ sendPex (tr_peerMsgs * msgs)
             tr_free (msgs->pex6);
             msgs->pex6 = diffs6.elements;
             msgs->pexCount6 = diffs6.elementCount;
+			tr_free (msgs->pexi2p);
+            msgs->pexi2p = diffsi2p.elements;
+            msgs->pexCounti2p = diffsi2p.elementCount;
 
             /* build the pex payload */
             tr_variantInitDict (&val, 3); /* ipv6 support: left as 3:
@@ -2418,10 +2511,100 @@ sendPex (tr_peerMsgs * msgs)
                 tr_free (tmp);
             }
 
+			if (diffsi2p.addedCount > 0)
+            {
+                /* "added" */
+				char newhost[530];
+				unsigned char hash[SHA256_DIGEST_LENGTH];
+				char * tmphost;
+				char *info;
+				char *c;
+				int z;
+				SHA256_CTX ctx;
+                tmp = walk = tr_new (uint8_t, diffsi2p.addedCount * 32);
+                for (i = 0; i < diffsi2p.addedCount; ++i) {
+					memset(newhost,0,sizeof(newhost));
+					sprintf(newhost,"%s",(char*)&diffsi2p.added[i].addr.addr.addrI2P.addr);
+				//	memcpy (newhost, &diffsi2p.added[i].addr.addr.addrI2P.addr, 516);
+					if(strstr(newhost,".b32.i2p") != NULL){
+						tmphost = replace_str(newhost,".b32.i2p","");
+						for(z = 0; tmphost[z]; z++){
+                        tmphost[z] = toupper(tmphost[z]);
+                        }
+						base32_decode((const uint8_t*)tmphost,hash,SHA256_DIGEST_LENGTH);
+						memcpy (walk, hash, 32); walk += 32;
+					} 
+					else if(strstr(newhost,"AAAA") != NULL || strstr(newhost,"AAAA.i2p") != NULL){
+                    c = replace_str(newhost,".i2p", "");
+					c = replace_str(c,"-", "+");
+	                c = replace_str(c,"~", "/");
+                    info = unbase64(c, strlen(c));
+                    SHA256_Init(&ctx);		
+                    SHA256_Update(&ctx,info,387);
+                    SHA256_Final(hash, &ctx);	
+                    memcpy (walk, hash, 32); walk += 32;
+					} 
+                }
+                assert ((walk - tmp) == diffsi2p.addedCount * 32);
+                tr_variantDictAddRaw (&val, TR_KEY_added, tmp, walk - tmp);
+                tr_free (tmp);
+
+                /* "added.f"
+                 * unset each holepunch flag because we don't support it. */
+                tmp = walk = tr_new (uint8_t, diffsi2p.addedCount);
+                for (i = 0; i < diffsi2p.addedCount; ++i)
+                    *walk++ = diffsi2p.added[i].flags & ~ADDED_F_HOLEPUNCH;
+                assert ((walk - tmp) == diffsi2p.addedCount);
+                tr_variantDictAddRaw (&val, TR_KEY_added_f, tmp, walk - tmp);
+                tr_free (tmp);
+            }
+
+            if (diffsi2p.droppedCount > 0)
+            {
+                /* "dropped" */
+				char newhost[530];
+				unsigned char hash[SHA256_DIGEST_LENGTH];
+				char * tmphost;
+				char *info;
+				char *c;
+				int z;
+				SHA256_CTX ctx;
+                tmp = walk = tr_new (uint8_t, diffsi2p.droppedCount * 32);
+                for (i = 0; i < diffsi2p.droppedCount; ++i) {
+					memset(newhost,0,sizeof(newhost));
+					sprintf(newhost,"%s",(char*)&diffsi2p.dropped[i].addr.addr.addrI2P.addr);
+				//	memcpy (newhost, &diffsi2p.dropped[i].addr.addr.addrI2P.addr, 516);
+					if(strstr(newhost,".b32.i2p") != NULL){
+						tmphost = replace_str(newhost,".b32.i2p","");
+						for(z = 0; tmphost[z]; z++){
+                        tmphost[z] = toupper(tmphost[z]);
+                        }
+						base32_decode((const uint8_t*)tmphost,hash,SHA256_DIGEST_LENGTH);
+						memcpy (walk, hash, 32); walk += 32;
+					} 
+					else if(strstr(newhost,"AAAA") != NULL || strstr(newhost,"AAAA.i2p") != NULL){
+                    c = replace_str(newhost,".i2p", "");
+					c = replace_str(c,"-", "+");
+	                c = replace_str(c,"~", "/");
+                    info = unbase64(c, strlen(c));
+                    SHA256_Init(&ctx);		
+                    SHA256_Update(&ctx,info,387);
+                    SHA256_Final(hash, &ctx);	
+                    memcpy (walk, hash, 32); walk += 32;
+					}  
+                }
+                assert ((walk - tmp) == diffsi2p.droppedCount * 32);
+                tr_variantDictAddRaw (&val, TR_KEY_dropped, tmp, walk - tmp);
+                tr_free (tmp);
+            }
+
             /* write the pex message */
             payload = tr_variantToBuf (&val, TR_VARIANT_FMT_BENC);
             evbuffer_add_uint32 (out, 2 * sizeof (uint8_t) + evbuffer_get_length (payload));
             evbuffer_add_uint8 (out, BT_LTEP);
+			if (tr_sessionGetI2PEnabled (getSession(msgs)) == true)
+			evbuffer_add_uint8 (out, msgs->i2p_pex_id);
+			else
             evbuffer_add_uint8 (out, msgs->ut_pex_id);
             evbuffer_add_buffer (out, payload);
             pokeBatchPeriod (msgs, HIGH_PRIORITY_INTERVAL_SECS);
@@ -2439,6 +2622,9 @@ sendPex (tr_peerMsgs * msgs)
         tr_free (diffs6.added);
         tr_free (diffs6.dropped);
         tr_free (newPex6);
+		tr_free (diffsi2p.added);
+        tr_free (diffsi2p.dropped);
+        tr_free (newPexi2p);
 
         /*msgs->clientSentPexAt = tr_time ();*/
     }
@@ -2504,6 +2690,7 @@ peermsgs_destruct (tr_peer * peer)
   evbuffer_free (msgs->outMessages);
   tr_free (msgs->pex6);
   tr_free (msgs->pex);
+  tr_free (msgs->pexi2p);
 
   tr_peerDestruct (&msgs->peer);
 

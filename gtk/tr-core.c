@@ -36,6 +36,7 @@
 #include <libtransmission/rpcimpl.h>
 #include <libtransmission/utils.h> /* tr_free */
 #include <libtransmission/variant.h>
+#include <libtransmission/web.h> /* tr_webRun () */
 
 #include "actions.h"
 #include "conf.h"
@@ -43,6 +44,8 @@
 #include "tr-core.h"
 #include "tr-prefs.h"
 #include "util.h"
+#include <stdlib.h>
+
 
 /***
 ****
@@ -1303,7 +1306,6 @@ add_file (TrCore      * core,
           data->ctor = ctor;
           data->do_prompt = do_prompt;
           data->do_notify = do_notify;
-
           handled = true;
           core_inc_busy (core);
           g_file_load_contents_async (file, NULL, add_file_async_callback, data);
@@ -1318,18 +1320,123 @@ add_file (TrCore      * core,
   return handled;
 }
 
+static
+size_t my_write_func(void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+  return fwrite(ptr, size, nmemb, stream);
+}
+
 bool
 gtr_core_add_from_url (TrCore * core, const char * uri)
 {
-  bool handled;
+  bool handled = false;
   const bool do_start = gtr_pref_flag_get (TR_KEY_start_added_torrents);
   const bool do_prompt = gtr_pref_flag_get (TR_KEY_show_options_window);
   const bool do_notify = false;
+  const char *i2prouter = gtr_pref_string_get (TR_KEY_I2P_ROUTER);
+  const int i2pport = gtr_pref_int_get (TR_KEY_peer_port);
+  const bool IsI2pEnabled = gtr_pref_flag_get (TR_KEY_I2P_ENABLED);
+  GFile * file = NULL;	
 
-  GFile * file = g_file_new_for_uri (uri);
+	if(IsI2pEnabled == true && strstr(uri, ".i2p/") != NULL
+	   && strstr(uri, "magnet") == NULL && strstr(uri, "maggot") == NULL)
+	{
+  char *i2pp = strstr( uri, ".i2p/" );
+  const char *endpoint_key = uri;
+  CURL * e;
+  CURLcode res;
+  const gchar *tmp_dir = g_get_tmp_dir ();
+  char tempfile[1024]={0};
+  char tempname[32]={0};	
+  FILE *outfile;
+
+		strcat(tempfile,tmp_dir);
+		sprintf(tempname,"/%d.torrent",rand());
+		strcat(tempfile,tempname);
+		
+		
+
+   outfile = fopen(tempfile, "w");   		
+
+  curl_global_init(CURL_GLOBAL_ALL);		
+		
+  e = curl_easy_init ();
+  curl_easy_setopt (e, CURLOPT_AUTOREFERER, 1L);
+  curl_easy_setopt (e, CURLOPT_ENCODING, "gzip;q=1.0, deflate, identity");
+  curl_easy_setopt (e, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt (e, CURLOPT_MAXREDIRS, -1L);
+  curl_easy_setopt (e, CURLOPT_NOSIGNAL, 1L);
+		  /* send all data to this function  */ 
+  curl_easy_setopt(e, CURLOPT_WRITEFUNCTION, my_write_func);
+ 
+  /* we pass our 'chunk' struct to the callback function */ 
+  curl_easy_setopt(e, CURLOPT_WRITEDATA, outfile);
+	// Check if host in url is an <name>.i2p or having an destination key <key>.i2p
+	if( i2pp != NULL ) {
+		if( strncmp( uri, "http://", 7 ) == 0 )
+			endpoint_key += 7;
+		
+		// Lets verify that host in url is and endpoint key
+		/*if( ( i2pp - endpoint_key ) != 516 ) 
+			endpoint_key=NULL;*/
+	} else
+		endpoint_key=NULL;
+	
+	// lets handle i2p tracker url if detected
+	if( i2pp != NULL || endpoint_key != NULL ) {
+		
+		// Verify all
+		char custom[1024]={0};	// custom request consists of [endpoint_key]\nGET "[uri]"\n
+		char newurl[4096]={0};
+		char newhost[1024]={0};
+		struct curl_slist *newheaders=NULL;
+		int len = i2pp - endpoint_key;
+		if( i2pp - endpoint_key < 516)
+			len+=4;
+		
+		memcpy(custom,endpoint_key,  len);
+		strcat(custom,"\r\nGET");
+		
+		// Connect to the inbound tunnel and send a custom request that initiates the tunnel to
+		// endpoint key and than performs the  actual GET request
+		// the tunnel has been initialized with destination key
+		
+		// Frist of all mofidy the url
+		sprintf(newurl,"http://%s:%d", i2prouter ,i2pport-1 );
+		strcat(newurl,i2pp+4);
+		curl_easy_setopt( e, CURLOPT_URL,newurl);
+		// then manipulate the headers so it confirms with the original url
+		strcat(newhost,"Host: ");
+		strncat(newhost,endpoint_key,len);
+		newheaders = curl_slist_append( newheaders, "User-Agent: libcurl-agent/1.0" );
+		newheaders = curl_slist_append( newheaders, newhost );
+		newheaders = curl_slist_append( newheaders, "Accept: */*" );
+		newheaders = curl_slist_append( newheaders, "Accept-Encoding: defalte, gzip" );
+		curl_easy_setopt( e, CURLOPT_HTTPHEADER, newheaders);
+		
+		curl_easy_setopt( e, CURLOPT_TIMEOUT, 20);	// Set timeout to 20 secs
+		curl_easy_setopt( e, CURLOPT_CUSTOMREQUEST,custom);
+
+/* get it! */ 
+  res = curl_easy_perform(e);
+		
+		fclose(outfile);
+		if(res == CURLE_OK)
+		file = g_file_new_for_path (tempfile);
+
+		curl_easy_cleanup(e);
+		curl_global_cleanup();
+	  }
+	}
+  else
+  file = g_file_new_for_uri (uri);
+		
+	if(file != NULL)
+	{
   handled = add_file (core, file, do_start, do_prompt, do_notify);
   g_object_unref (file);
   gtr_core_torrents_added (core);
+	}
 
   return handled;
 }

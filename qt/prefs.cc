@@ -108,6 +108,11 @@ Prefs::PrefItem Prefs::myItems[] =
   { UTP_ENABLED, TR_KEY_utp_enabled, QVariant::Bool },
   { LPD_ENABLED, TR_KEY_lpd_enabled, QVariant::Bool },
   { PORT_FORWARDING, TR_KEY_port_forwarding_enabled, QVariant::Bool },
+ /*   { I2P_ENABLED, TR_KEY_I2P_ENABLED, QVariant::Bool },
+    { I2P_ROUTER, TR_KEY_I2P_ROUTER, QVariant::String },
+    { I2P_BOB_PORT, TR_KEY_I2P_BOB_PORT, QVariant::Int },
+    { I2P_PROXY_PORT, TR_KEY_I2P_PROXY_PORT, QVariant::Int },
+    { I2P_TUNNEL_MODE, TR_KEY_I2P_TUNNEL_MODE, QVariant::Int },	*/
   { PREALLOCATION, TR_KEY_preallocation, QVariant::Int },
   { RATIO, TR_KEY_ratio_limit, QVariant::Double },
   { RATIO_ENABLED, TR_KEY_ratio_limit_enabled, QVariant::Bool },
@@ -303,7 +308,7 @@ Prefs :: initDefaults (tr_variant * d)
   tr_variantDictAddBool (d, TR_KEY_watch_dir_enabled, false);
   tr_variantDictAddInt  (d, TR_KEY_blocklist_date, 0);
   tr_variantDictAddInt  (d, TR_KEY_main_window_height, 500);
-  tr_variantDictAddInt  (d, TR_KEY_main_window_width, 300);
+  tr_variantDictAddInt  (d, TR_KEY_main_window_width, 100);
   tr_variantDictAddInt  (d, TR_KEY_main_window_x, 50);
   tr_variantDictAddInt  (d, TR_KEY_main_window_y, 50);
   tr_variantDictAddInt  (d, TR_KEY_remote_session_port, atoi(TR_DEFAULT_RPC_PORT_STR));
@@ -317,6 +322,11 @@ Prefs :: initDefaults (tr_variant * d)
   tr_variantDictAddStr  (d, TR_KEY_sort_mode, "sort-by-name");
   tr_variantDictAddStr  (d, TR_KEY_statusbar_stats, "total-ratio");
   tr_variantDictAddStr  (d, TR_KEY_watch_dir, tr_getDefaultDownloadDir());
+/*  tr_variantDictAddBool (d, TR_KEY_I2P_ENABLED,           false);
+  tr_variantDictAddInt (d, TR_KEY_I2P_TUNNEL_MODE,           1);
+  tr_variantDictAddStr (d, TR_KEY_I2P_ROUTER,           "127.0.0.1");
+  tr_variantDictAddInt (d, TR_KEY_I2P_BOB_PORT,          2827);
+  tr_variantDictAddInt (d, TR_KEY_I2P_PROXY_PORT,           4444);*/	
 }
 
 /***

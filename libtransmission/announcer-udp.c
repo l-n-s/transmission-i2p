@@ -385,7 +385,8 @@ tau_announce_request_fail (struct tau_announce_request  * request,
 }
 
 static void
-on_announce_response (struct tau_announce_request  * request,
+on_announce_response (tr_session *session,
+                      struct tau_announce_request  * request,
                       tau_action_t                   action,
                       struct evbuffer              * buf)
 {
@@ -403,7 +404,8 @@ on_announce_response (struct tau_announce_request  * request,
         resp->pex = tr_peerMgrCompactToPex (evbuffer_pullup (buf, -1),
                                             evbuffer_get_length (buf),
                                             NULL, 0,
-                                            &request->response.pex_count);
+                                            &request->response.pex_count,
+                                            tr_sessionGetI2PEnabled (session));
         tau_announce_request_finished (request);
     }
     else
@@ -914,7 +916,7 @@ tau_handle_message (tr_session * session, const uint8_t * msg, size_t msglen)
             if (req->sent_at && (transaction_id == req->transaction_id)) {
                 dbgmsg (tracker->key, "%"PRIu32" is an announce request!", transaction_id);
                 tr_ptrArrayRemove (reqs, j);
-                on_announce_response (req, action_id, buf);
+                on_announce_response (session,req, action_id, buf);
                 tau_announce_request_free (req);
                 evbuffer_free (buf);
                 return true;

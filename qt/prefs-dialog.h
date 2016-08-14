@@ -48,6 +48,7 @@ class PrefsDialog: public QDialog
         void refreshPref( int key );
         void encryptionEdited( int );
         void altSpeedDaysEdited( int );
+		void tunnelModeEdited( int );
         void sessionUpdated( );
         void onWatchClicked( );
         void onScriptClicked( );
@@ -85,6 +86,7 @@ class PrefsDialog: public QDialog
         QWidget * createNetworkTab( );
         QWidget * createDesktopTab( );
         QWidget * createRemoteTab( Session& );
+		QWidget * createI2PTab( );
 
     private:
         typedef QMap<int,QWidget*> key2widget_t;
@@ -101,6 +103,7 @@ class PrefsDialog: public QDialog
         QCheckBox * myIncompleteCheckbox;
         QPushButton * myIncompleteButton;
         QPushButton * myDestinationButton;
+		QWidgetList myI2PWidgets;
         QWidgetList myWebWidgets;
         QWidgetList myWebAuthWidgets;
         QWidgetList myWebWhitelistWidgets;

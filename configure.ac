@@ -115,6 +115,8 @@ if test "x$ac_cv_func_strtold" != "xyes" ; then
 fi
 
 AC_SEARCH_LIBS(cos, [m])
+AC_SEARCH_LIBS([bob_create_context], [bob])
+AC_SEARCH_LIBS([sam3CreateSession], [sam])
 AC_SEARCH_LIBS([socket], [socket net])
 AC_SEARCH_LIBS([gethostbyname], [nsl bind])
 PKG_CHECK_MODULES(OPENSSL, [openssl >= $OPENSSL_MINIMUM], , [CHECK_SSL()])
@@ -509,6 +511,8 @@ AC_CONFIG_FILES([Makefile
                  libtransmission/Makefile
                  utils/Makefile
                  third-party/Makefile
+                 third-party/libbob/Makefile
+                 third-party/libsam3/Makefile
                  third-party/dht/Makefile
                  third-party/libutp/Makefile
                  third-party/libnatpmp/Makefile

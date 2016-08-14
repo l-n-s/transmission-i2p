@@ -1135,6 +1135,8 @@ onCorePrefsChanged (TrCore * core UNUSED, const tr_quark key, gpointer gdata)
       gtk_widget_set_sensitive (data->portButton, TRUE);
       gtk_widget_set_sensitive (data->portSpin, TRUE);
     }
+
+	gtr_pref_flag_get (TR_KEY_I2P_ENABLED);
 }
 
 static void
@@ -1174,6 +1176,101 @@ onPortTest (GtkButton * button UNUSED, gpointer vdata)
     data->portTag = g_signal_connect (data->core, "port-tested", G_CALLBACK (onPortTested), data);
   gtr_core_port_test (data->core);
 }
+
+/// I2P Page
+///
+
+struct I2PPage
+{
+    TrCore     * core;
+    GtkWidget  * portLabel;
+    GtkWidget  * portButton;
+    GtkWidget  * portSpin;
+    gulong       portTag;
+    gulong       prefsTag;
+};
+
+static GtkTreeModel*
+I2PModeTypeModelNew( void )
+{
+    GtkTreeIter    iter;
+    GtkListStore * store = gtk_list_store_new( 2, G_TYPE_STRING, G_TYPE_INT );
+
+    gtk_list_store_append( store, &iter );
+    gtk_list_store_set( store, &iter, 0, "High Anonymity", 1, 0, -1 );
+    gtk_list_store_append( store, &iter );
+    gtk_list_store_set( store, &iter, 0, "Standard", 1, 1, -1 );
+    gtk_list_store_append( store, &iter );
+    gtk_list_store_set( store, &iter, 0, "Performance", 1, 2, -1 );
+    return GTK_TREE_MODEL( store );
+}
+
+static void
+onI2PModeTypeChanged( GtkComboBox * w, gpointer      gpage )
+{
+    GtkTreeIter iter;
+
+    if( gtk_combo_box_get_active_iter( w, &iter ) )
+    {
+        struct I2PPage * page = gpage;
+        int type = 1;	
+    gtk_tree_model_get( gtk_combo_box_get_model( w ), &iter, 1, &type, -1 );
+	gtr_core_set_pref_int( TR_CORE( page->core ), TR_KEY_I2P_TUNNEL_MODE, type );	
+    }
+}
+
+
+static GtkWidget* 
+I2PBobPage ( GObject * core )
+{
+   guint          row = 0;
+    const char * s;
+    GtkWidget *  t;
+    GtkWidget *  w;
+    GtkTreeModel * m;
+    GtkCellRenderer * r;
+    struct I2PPage * data;
+
+	data = g_new0 (struct I2PPage, 1);
+    data->core = TR_CORE(core);
+	
+    /* build the page */
+    t = hig_workarea_create( );
+	
+    hig_workarea_add_section_title( t, &row, _("I2P / BOB Settings"));
+
+	s = _("Enable I2P/Bob" );	
+    w = new_check_button( s, TR_KEY_I2P_ENABLED, core );
+    hig_workarea_add_wide_control( t, &row, w );
+
+    w = new_entry (TR_KEY_I2P_ROUTER, core);
+    w = hig_workarea_add_row (t, &row, _("I2P Router address:"), w, NULL);
+
+    w = new_spin_button( TR_KEY_I2P_BOB_PORT, core, 1, USHRT_MAX, 1 );
+	hig_workarea_add_row (t, &row, _("Bob Port:"), w, NULL);
+    
+    w = new_spin_button( TR_KEY_I2P_PROXY_PORT, core, 1, USHRT_MAX, 1 );
+	hig_workarea_add_row (t, &row, _("I2P Router Port:"), w, NULL);
+
+	
+    s = _( "Tunnel mode:" );
+    m = I2PModeTypeModelNew( );
+    w = gtk_combo_box_new_with_model( m );
+    r = gtk_cell_renderer_text_new( );
+    gtk_cell_layout_pack_start( GTK_CELL_LAYOUT( w ), r, TRUE );
+    gtk_cell_layout_set_attributes( GTK_CELL_LAYOUT( w ), r, "text", 0, NULL );
+    gtk_combo_box_set_active( GTK_COMBO_BOX( w ), gtr_pref_int_get( TR_KEY_I2P_TUNNEL_MODE) );
+    g_signal_connect( w, "changed", G_CALLBACK(onI2PModeTypeChanged), data);
+    g_object_unref( G_OBJECT( m ) );
+    w = hig_workarea_add_row( t, &row, s, w, NULL );
+   
+  /* cleanup */
+ 
+    
+    return t;
+}
+
+
 
 static GtkWidget*
 networkPage (GObject * core)
@@ -1229,7 +1326,7 @@ networkPage (GObject * core)
   hig_workarea_add_section_title (t, &row, _("Options"));
 
 #ifdef WITH_UTP
-  s = _("Enable _uTP for peer communication");
+  s = _("Enable _uTP for peer communication. Automatically disabled if I2P is enabled, even if checked!");
   w = new_check_button (s, TR_KEY_utp_enabled, core);
   s = _("uTP is a tool for reducing network congestion.");
   gtk_widget_set_tooltip_text (w, s);
@@ -1328,6 +1425,8 @@ gtr_prefs_dialog_new (GtkWindow * parent, GObject * core)
                             gtk_label_new (_("Privacy")));
   gtk_notebook_append_page (GTK_NOTEBOOK (n), networkPage (core),
                             gtk_label_new (_("Network")));
+  gtk_notebook_append_page( GTK_NOTEBOOK(n), I2PBobPage (core),
+                            gtk_label_new (_("I2P / BOB")));	
   gtk_notebook_append_page (GTK_NOTEBOOK (n), desktopPage (core),
                             gtk_label_new (_("Desktop")));
   gtk_notebook_append_page (GTK_NOTEBOOK (n), remotePage (core),

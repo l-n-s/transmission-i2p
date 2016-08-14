@@ -635,7 +635,7 @@ static void
 refreshInfo (struct DetailsImpl * di, tr_torrent ** torrents, int n)
 {
   int i;
-  const char * str;
+  const char * str= _("");
   const char * mixed = _("Mixed");
   const char * no_torrent = _("No Torrents Selected");
   const char * stateString;
@@ -1364,35 +1364,39 @@ refreshPeerRow (GtkListStore        * store,
 static void
 refreshPeerList (struct DetailsImpl * di, tr_torrent ** torrents, int n)
 {
-  int i;
-  int * peerCount;
+  GtkListStore * store = di->peer_store;
+  GHashTable * hash = di->peer_hash;
   GtkTreeIter iter;
   GtkTreeModel * model;
-  GHashTable * hash = di->peer_hash;
-  GtkListStore * store = di->peer_store;
+  int * peerCount;
+  int i;
   struct tr_peer_stat ** peers;
+
 
   /* step 1: get all the peers */
   peers = g_new (struct tr_peer_stat*, n);
   peerCount = g_new (int, n);
   for (i=0; i<n; ++i)
     peers[i] = tr_torrentPeers (torrents[i], &peerCount[i]);
-
+	
   /* step 2: mark all the peers in the list as not-updated */
   model = GTK_TREE_MODEL (store);
-  if (gtk_tree_model_iter_nth_child (model, &iter, NULL, 0)) do
+
+	if (gtk_tree_model_iter_nth_child (model, &iter, NULL, 0)) do
     gtk_list_store_set (store, &iter, PEER_COL_WAS_UPDATED, FALSE, -1);
+	
   while (gtk_tree_model_iter_next (model, &iter));
 
+	
   /* step 3: add any new peers */
-  for (i=0; i<n; ++i)
+ for (i=0; i<n; ++i)
     {
       int j;
       const tr_torrent * tor = torrents[i];
 
       for (j=0; j<peerCount[i]; ++j)
         {
-          char key[128];
+          char key[128] = {0};
           const tr_peer_stat * s = &peers[i][j];
 
           g_snprintf (key, sizeof (key), "%d.%s", tr_torrentId (tor), s->addr);
@@ -1404,34 +1408,38 @@ refreshPeerList (struct DetailsImpl * di, tr_torrent ** torrents, int n)
               p = gtk_tree_model_get_path (model, &iter);
               g_hash_table_insert (hash, g_strdup (key), gtk_tree_row_reference_new (model, p));
               gtk_tree_path_free (p);
+			
+
             }
         }
     }
 
   /* step 4: update the peers */
-  for (i=0; i<n; ++i)
+ for (i=0; i<n; ++i)
     {
       int j;
       const tr_torrent * tor = torrents[i];
 
       for (j=0; j<peerCount[i]; ++j)
         {
-          char key[128];
+          char key[128] = {0};
           GtkTreePath * p;
           GtkTreeRowReference * ref;
           const tr_peer_stat * s = &peers[i][j];
-
           g_snprintf (key, sizeof (key), "%d.%s", tr_torrentId (tor), s->addr);
-          ref = g_hash_table_lookup (hash, key);
+          ref = g_hash_table_lookup (hash, key);	
           p = gtk_tree_row_reference_get_path (ref);
           gtk_tree_model_get_iter (model, &iter, p);
           refreshPeerRow (store, &iter, s);
           gtk_tree_path_free (p);
+				
         }
     }
 
   /* step 5: remove peers that have disappeared */
-  model = GTK_TREE_MODEL (store);
+
+	model = GTK_TREE_MODEL (store);
+	
   if (gtk_tree_model_iter_nth_child (model, &iter, NULL, 0))
     {
       gboolean more = TRUE;
@@ -1451,15 +1459,15 @@ refreshPeerList (struct DetailsImpl * di, tr_torrent ** torrents, int n)
               g_hash_table_remove (hash, key);
               more = gtk_list_store_remove (store, &iter);
               g_free (key);
-            }
+			}
         }
-    }
-
+    }	
   /* step 6: cleanup */
   for (i=0; i<n; ++i)
     tr_torrentPeersFree (peers[i], peerCount[i]);
   tr_free (peers);
   tr_free (peerCount);
+	
 }
 
 static void
@@ -1494,6 +1502,8 @@ refreshWebseedList (struct DetailsImpl * di, tr_torrent ** torrents, int n)
           if (g_hash_table_lookup (hash, key) == NULL)
             {
               GtkTreePath * p;
+			if (gtk_list_store_iter_is_valid (store, &iter))
+				{
               gtk_list_store_append (store, &iter);
               gtk_list_store_set (store, &iter, WEBSEED_COL_URL, url,
                                                 WEBSEED_COL_KEY, key,
@@ -1501,6 +1511,7 @@ refreshWebseedList (struct DetailsImpl * di, tr_torrent ** torrents, int n)
               p = gtk_tree_model_get_path (model, &iter);
               g_hash_table_insert (hash, g_strdup (key), gtk_tree_row_reference_new (model, p));
               gtk_tree_path_free (p);
+				}
             }
         }
     }

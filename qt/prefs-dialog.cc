@@ -168,6 +168,50 @@ PrefsDialog :: lineEditNew( int key, int echoMode )
 ****
 ***/
 
+void
+PrefsDialog :: tunnelModeEdited( int i )
+{
+    const int value = qobject_cast<QComboBox*>(sender())->itemData(i).toInt();
+    myPrefs.set( Prefs :: I2P_TUNNEL_MODE , value );
+}
+
+QWidget *
+PrefsDialog :: createI2PTab( )
+{
+    QWidget *l, *r;
+    HIG * hig = new HIG( );
+    hig->addSectionTitle( tr( "I2P Settings" ) );	
+    hig->addWideControl( l = checkBoxNew( tr( "Enable I2P" ), Prefs :: I2P_ENABLED ) );
+    //myUnsupportedWhenRemote << l;
+    l = hig->addRow( tr( "I2P Router:" ), r = lineEditNew( Prefs :: I2P_ROUTER ) );
+    myI2PWidgets << l << r;
+    l = hig->addRow( tr( "BOB Port:" ), r = spinBoxNew( Prefs :: I2P_BOB_PORT, 1, 65535, 1 ) );
+    myI2PWidgets << l << r;
+    l = hig->addRow( tr( "Proxy Port:" ), r = spinBoxNew( Prefs :: I2P_PROXY_PORT, 1, 65535, 1 ) );
+    myI2PWidgets << l << r;
+
+	
+   QString s = tr( "Tunnel mode:" );
+   QComboBox * box = new QComboBox;
+   const QIcon noIcon;
+   box->addItem( noIcon, tr( "High anonymity" ), QVariant( 0 ) );
+   box->addItem( noIcon, tr( "Normal" ),  QVariant( 1) );
+   box->addItem( noIcon, tr( "Performance" ),  QVariant( 2) );
+   box->setCurrentIndex( box->findData( myPrefs.getInt( Prefs :: I2P_TUNNEL_MODE ) ) );
+   connect( box, SIGNAL(activated(int)), this, SLOT(tunnelModeEdited(int)) );
+   l = hig->addRow( s, box );
+   myI2PWidgets << l << box;
+	
+    // myIsServer is not woking yet :)
+    //myUnsupportedWhenRemote << myI2PWidgets;
+    hig->finish( );
+    return hig;
+}
+
+/***
+ ***
+ ***/
+
 QWidget *
 PrefsDialog :: createRemoteTab( Session& session )
 {
@@ -645,6 +689,7 @@ PrefsDialog :: PrefsDialog( Session& session, Prefs& prefs, QWidget * parent ):
     t->addTab( createSeedingTab( ),      tr( "Seeding" ) );
     t->addTab( createPrivacyTab( ),      tr( "Privacy" ) );
     t->addTab( createNetworkTab( ),      tr( "Network" ) );
+	t->addTab( createI2PTab( ),        tr( "I2P Network" ) );
     t->addTab( createDesktopTab( ),      tr( "Desktop" ) );
     t->addTab( createRemoteTab(session), tr( "Remote" ) );
     myLayout->addWidget( t );
@@ -660,6 +705,7 @@ PrefsDialog :: PrefsDialog( Session& session, Prefs& prefs, QWidget * parent ):
     keys << Prefs :: RPC_ENABLED
          << Prefs :: ALT_SPEED_LIMIT_ENABLED
          << Prefs :: ALT_SPEED_LIMIT_TIME_ENABLED
+		 << Prefs :: I2P_ENABLED
          << Prefs :: ENCRYPTION
          << Prefs :: BLOCKLIST_ENABLED
          << Prefs :: DIR_WATCH
@@ -724,6 +770,13 @@ PrefsDialog :: refreshPref( int key )
             foreach( QWidget * w, myWebWidgets ) w->setEnabled( enabled );
             break;
         }
+
+		case Prefs :: I2P_ENABLED: {
+	    const bool enabled( myPrefs.getBool( Prefs::I2P_ENABLED ) );
+	    foreach( QWidget * w, myI2PWidgets ) w->setEnabled( !enabled );
+	    break;
+	   }
+	
 
         case Prefs :: ALT_SPEED_LIMIT_TIME_ENABLED: {
             const bool enabled = myPrefs.getBool( key );

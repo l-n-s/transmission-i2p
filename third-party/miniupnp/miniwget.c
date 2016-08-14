@@ -337,6 +337,7 @@ miniwget3(const char * host,
 				          &(((struct sockaddr_in *)&saddr)->sin_addr),
 				          addr_str, addr_str_len);
 			}
+			
 #endif
 			/* getnameinfo return ip v6 address with the scope identifier
 			 * such as : 2a01:e35:8b2b:7330::%4281128194 */
