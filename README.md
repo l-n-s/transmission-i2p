@@ -38,11 +38,13 @@ OR run i2pd binary with option **--bob.enabled 1**
 
 Now run **gtk/transmission-gtk** and configure settings:
 
-- Uncheck all options in 'Network' tab, except PXE
+- Uncheck all options in 'Network' tab, except PEX
 - Adjust settings in 'I2P/BOB' tab
 
 If everything is set up correctly, you should be able to share and download
 files in Invisible Internet. 
+
+Beware that magnet links are not working yet, use .torrent files.
 
 
 Original description by COMiX
