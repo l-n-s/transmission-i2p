@@ -12,7 +12,7 @@ Clone the repo:
 
 Install required packages:
 
-    sudo apt-get install build-essential automake autoconf libtool pkg-config intltool libcurl4-openssl-dev libglib2.0-dev libevent-dev libminiupnpc-dev libappindicator-dev automake1.11 
+    sudo apt-get install build-essential automake autoconf libtool pkg-config intltool libcurl4-openssl-dev libglib2.0-dev libgtk-3-dev libevent-dev libminiupnpc-dev libappindicator-dev automake1.11
 
 Then configure and make:
 
