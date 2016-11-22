@@ -316,13 +316,24 @@ tr_netOpenPeerSocket (tr_session        * session,
     }
 
 	if(addr->type == TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) == true){
-	inet_pton(AF_INET, session->I2PRouter, &ipv4addr);
+    if (inet_pton(AF_INET, session->I2PRouter, &ipv4addr) != 1) {
+      tr_logAddError ("I2P router address is incorrect: %s", session->I2PRouter);
+      tr_netClose (session, s);
+      return -1;
+    }
     server = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET); 
     bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;	
-    bcopy((char *)server->h_addr, 
-         (char *)&serv_addr.sin_addr.s_addr,
-         server->h_length);
+    serv_addr.sin_family = AF_INET;
+    if (server != NULL) {
+      bcopy((char *)server->h_addr,
+           (char *)&serv_addr.sin_addr.s_addr,
+           server->h_length);
+    } else {
+      tr_logAddInfo ("Cannot get domain name for the I2P router address: %s", session->I2PRouter);
+      bcopy((char *)&ipv4addr,
+           (char *)&serv_addr.sin_addr.s_addr,
+           sizeof ipv4addr);
+    }
     serv_addr.sin_port = htons(session->public_peer_port-1);
 	memcpy(&sock,&serv_addr,sizeof(serv_addr));
 	addrlen = sizeof(serv_addr);
@@ -416,13 +427,23 @@ tr_netOpenPeerUTPSocket (tr_session        * session,
 	  int sizeaddr;
 		
 	if(addr->type == TR_AF_INETI2P && tr_sessionGetI2PEnabled (session) == true){
-	inet_pton(AF_INET, session->I2PRouter, &ipv4addr);
+    if (inet_pton(AF_INET, session->I2PRouter, &ipv4addr) != 1) {
+      tr_logAddError ("I2P router address is incorrect: %s", session->I2PRouter);
+      return -1;
+    }
     server = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET); 
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;	
-    bcopy((char *)server->h_addr, 
-         (char *)&serv_addr.sin_addr.s_addr,
-         server->h_length);  // cannot work, just implemented for test now
+    if (server != NULL) {
+      bcopy((char *)server->h_addr,
+           (char *)&serv_addr.sin_addr.s_addr,
+           server->h_length);  // cannot work, just implemented for test now
+    } else {
+      tr_logAddInfo ("Cannot get domain name for the I2P router address: %s", session->I2PRouter);
+      bcopy((char *)&ipv4addr,
+           (char *)&serv_addr.sin_addr.s_addr,
+           sizeof ipv4addr);
+    }
     serv_addr.sin_port = htons(session->Sam3Session->port); //session->public_peer_port-1
 	sprintf(adresse, "%s\n", tr_address_to_string(addr));
 	sizeaddr = strlen(adresse);

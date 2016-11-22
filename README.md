@@ -1,40 +1,45 @@
-transmission-i2p
-================
+# transmission-i2p
 
 Anonymous torrent client powered by [Invisible Internet](http://i2pd.website).
 
-How to build on Debian Jessie
------------------------------
+## How to build on Debian Jessie
 
 Clone the repo:
 
-    git clone https://github.com/l-n-s/transmission-i2p.git
+```sh
+git clone https://github.com/l-n-s/transmission-i2p.git
+```
 
 Install required packages:
 
-    sudo apt-get install build-essential automake autoconf libtool pkg-config intltool libcurl4-openssl-dev libglib2.0-dev libgtk-3-dev libevent-dev libminiupnpc-dev libappindicator-dev automake1.11
+```sh
+sudo apt-get install build-essential automake autoconf libtool pkg-config intltool libcurl4-openssl-dev libglib2.0-dev libgtk-3-dev libevent-dev libminiupnpc-dev libappindicator-dev libssl-dev automake1.11
+```
 
 Then configure and make:
 
-    ./configure --with-gtk && make
+```sh
+./configure --with-gtk && make
+```
 
 Result binary is **gtk/transmission-gtk**.
 
-Using with i2pd
----------------
+## Using with i2pd
 
 Install [i2pd](https://github.com/PurpleI2P/i2pd).
 
 Configure i2pd to enable BOB interface. Edit your i2pd.conf:
 
-    [bob]
-    ## Uncomment and set to 'true' to enable BOB command channel
-    enabled = true 
-    ## Address and port service will listen on
-    address = 127.0.0.1
-    port = 2827
+```ini
+[bob]
+## Uncomment and set to 'true' to enable BOB command channel
+enabled = true 
+## Address and port service will listen on
+address = 127.0.0.1
+port = 2827
+```
 
-OR run i2pd binary with option **--bob.enabled 1**
+OR run i2pd binary with option `--bob.enabled 1`
 
 Now run **gtk/transmission-gtk** and configure settings:
 
@@ -46,9 +51,25 @@ files in Invisible Internet.
 
 Beware that magnet links are not working yet, use .torrent files.
 
+## Configuring transmission-daemon
 
-Original description by COMiX
------------------------------
+At least the following options should be set in the `settings.json` for I2P to work:
+
+```json
+{
+    "i2p-bob-port": 2827,
+    "i2p-enabled": true,
+    "i2p-proxy-port": 4444,
+    "i2p-router": "127.0.0.1",
+    "i2p-tunnel-mode": 1,
+    "pex-enabled": true,
+    "lpd-enabled": false,
+    "dht-enabled": false,
+    "utp-enabled": false
+}
+```
+
+## Original description by COMiX
 
 This version of Transmission is based on the excellent work of dinamic (thank a lot and respect to you, Man)
 
@@ -76,11 +97,9 @@ Sometime, transferts can take a while to start (like 3~5 min) Be patient, don't 
 
 
 
-Disclaimer
-----------
+## Disclaimer
 
 [Project website in I2P](http://bioq5jbcnfopqwvk7qssaxcl7avzeta6mu72jmxjeowflpcrhf6q.b32.i2p/transmission)
 
 All work was made by COMiX. I've just cleaned some junk files and published 
 this code at GitHub.
-
