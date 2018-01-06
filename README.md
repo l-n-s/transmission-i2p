@@ -1,5 +1,7 @@
 # transmission-i2p
 
+THIS SOFTWARE IS NOT MAINTAINED FOR YEARS. Use on your own risk or consider using [XD](https://github.com/majestrate/XD) instead.
+
 Anonymous torrent client powered by [Invisible Internet](http://i2pd.website).
 
 ## How to build on Debian Jessie
